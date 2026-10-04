@@ -16,6 +16,7 @@ export const CHARACTER_FIELDS = [
   },
   { key: 'class', kind: 'text', label: 'Class', maxLength: 40, default: '' },
   { key: 'race', kind: 'text', label: 'Race', maxLength: 40, default: '' },
+  { key: 'background', kind: 'text', label: 'Background', maxLength: 60, default: '' },
   { key: 'level', kind: 'int', label: 'Level', min: 1, max: 20, default: 1 },
   { key: 'ac', kind: 'int', label: 'Armor Class', min: 0, max: 40, default: 10 },
   { key: 'notes', kind: 'text', label: 'Notes', maxLength: 2000, default: '' },
@@ -202,8 +203,9 @@ function sanitizeStringField(value, maxLength) {
   return String(value).trim().slice(0, maxLength);
 }
 
-const CHARACTER_BUILD_SCHEMA_VERSION = 1;
+export const CHARACTER_BUILD_SCHEMA_VERSION = 2;
 const DEFAULT_RULES_DATABASE_SCHEMA_VERSION = 4;
+const CHARACTER_LEVEL_CAP = 20;
 const ABILITY_SCORE_METHODS = new Set(['standard-array', 'point-buy', 'rolled', 'manual']);
 
 function sanitizeRuleId(value) {
@@ -214,6 +216,47 @@ function sanitizeRuleId(value) {
 function sanitizeIdList(value, limit = 100) {
   if (!Array.isArray(value)) return [];
   return [...new Set(value.map(sanitizeRuleId).filter(Boolean))].slice(0, limit);
+}
+
+function cloneJsonObject(value, maxLength = 100000) {
+  if (!value || typeof value !== 'object') return null;
+  try {
+    const serialized = JSON.stringify(value);
+    return serialized.length <= maxLength ? JSON.parse(serialized) : null;
+  } catch {
+    return null;
+  }
+}
+
+function sanitizeBuildMigration(input) {
+  const source = input && typeof input === 'object' ? input : {};
+  const backupSource = source.backup && typeof source.backup === 'object' ? source.backup : null;
+  const legacySource = backupSource?.legacy && typeof backupSource.legacy === 'object' ? backupSource.legacy : {};
+  const backup = backupSource ? {
+    sourceBuild: cloneJsonObject(backupSource.sourceBuild),
+    sourceCharacter: cloneJsonObject(backupSource.sourceCharacter, 200000),
+    legacy: {
+      class: sanitizeStringField(legacySource.class, 120),
+      race: sanitizeStringField(legacySource.race, 120),
+      background: sanitizeStringField(legacySource.background, 120),
+      level: Validators.clampInt(legacySource.level, 1, 20, 1),
+    },
+  } : null;
+  const unresolved = Array.isArray(source.unresolved) ? source.unresolved
+    .map((entry) => ({
+      field: sanitizeStringField(entry?.field, 120),
+      value: sanitizeStringField(entry?.value, 300),
+      reason: sanitizeStringField(entry?.reason, 500),
+      candidateIds: sanitizeIdList(entry?.candidateIds, 30),
+    }))
+    .filter((entry) => entry.field && (entry.value || entry.reason))
+    .slice(0, 100) : [];
+  return {
+    version: Validators.clampInt(source.version, 0, 1000, 0),
+    state: ['pending', 'complete', 'review'].includes(source.state) ? source.state : 'pending',
+    backup,
+    unresolved,
+  };
 }
 
 function defaultCharacterBuild() {
@@ -227,9 +270,10 @@ function defaultCharacterBuild() {
     selections: [],
     spells: [],
     inventory: [],
-    proficiencies: { skills: [], tools: [], languages: [] },
+    proficiencies: { skills: [], tools: [], languages: [], savingThrows: [] },
     roleplay: { alignment: '', personalityTraits: '', ideals: '', bonds: '', flaws: '', appearance: '' },
     overrides: {},
+    migration: { version: 0, state: 'pending', backup: null, unresolved: [] },
   };
 }
 
@@ -254,6 +298,7 @@ function sanitizeCharacterBuild(input, existing) {
     proficiencies: {},
     roleplay: {},
     overrides: {},
+    migration: {},
   };
   build.ruleset = {
     edition: sanitizeStringField(ruleset.edition, 20) || defaults.ruleset.edition,
@@ -265,28 +310,81 @@ function sanitizeCharacterBuild(input, existing) {
     ),
   };
 
-  const classEntries = Array.isArray(candidate.classes) ? candidate.classes : [];
-  let totalLevel = 0;
-  build.classes = [];
-  for (const entry of classEntries.slice(0, 13)) {
-    const classId = sanitizeRuleId(entry?.classId);
-    const remainingLevels = 20 - totalLevel;
-    if (!classId || remainingLevels < 1) continue;
-    const classLevel = Validators.clampInt(entry.classLevel, 1, remainingLevels, 1);
-    totalLevel += classLevel;
-    build.classes.push({
-      classId,
-      classLevel,
-      subclassId: sanitizeRuleId(entry.subclassId),
+  const migrationSource = { ...(previous.migration || {}), ...(source.migration || {}) };
+  if (previous.migration?.backup && !source.migration?.backup) migrationSource.backup = previous.migration.backup;
+  migrationSource.version = Math.max(
+    Number(previous.migration?.version) || 0,
+    Number(source.migration?.version) || 0
+  );
+  const unresolvedEntries = [
+    ...(Array.isArray(previous.migration?.unresolved) ? previous.migration.unresolved : []),
+    ...(Array.isArray(source.migration?.unresolved) ? source.migration.unresolved : []),
+  ];
+  migrationSource.unresolved = unresolvedEntries.filter((entry, index) => {
+    const key = `${entry?.field || ''}\u0000${entry?.value || ''}\u0000${entry?.reason || ''}`;
+    return unresolvedEntries.findIndex((candidate) =>
+      `${candidate?.field || ''}\u0000${candidate?.value || ''}\u0000${candidate?.reason || ''}` === key
+    ) === index;
+  });
+  build.migration = sanitizeBuildMigration(migrationSource);
+  for (const [field, rawValue, sanitizedValue] of [
+    ['speciesId', candidate.speciesId, build.speciesId],
+    ['backgroundId', candidate.backgroundId, build.backgroundId],
+  ]) {
+    const rawId = sanitizeStringField(rawValue, 120);
+    if (rawId && !sanitizedValue) build.migration.unresolved.push({
+      field,
+      value: rawId,
+      reason: 'This value is not a valid local rules ID; the original build is retained in the migration backup.',
+      candidateIds: [],
     });
   }
 
+  const classEntries = Array.isArray(candidate.classes) ? candidate.classes : [];
+  build.classes = classEntries.slice(0, 20).map((entry, index) => {
+    const rawClassId = sanitizeStringField(entry?.classId, 120);
+    const rawSubclassId = sanitizeStringField(entry?.subclassId, 120);
+    const classId = sanitizeRuleId(rawClassId);
+    const subclassId = sanitizeRuleId(rawSubclassId);
+    if (rawClassId && !classId) build.migration.unresolved.push({
+      field: `classes[${index}].classId`, value: rawClassId,
+      reason: 'This value is not a valid local rules ID; the original build is retained in the migration backup.', candidateIds: [],
+    });
+    if (rawSubclassId && !subclassId) build.migration.unresolved.push({
+      field: `classes[${index}].subclassId`, value: rawSubclassId,
+      reason: 'This value is not a valid local rules ID; the original build is retained in the migration backup.', candidateIds: [],
+    });
+    const classLevelValue = Number(entry?.classLevel);
+    const classLevel = Number.isInteger(classLevelValue) ? Math.max(0, Math.min(CHARACTER_LEVEL_CAP, classLevelValue)) : 0;
+    return { classId, classLevel, subclassId };
+  });
+
   const selections = Array.isArray(candidate.selections) ? candidate.selections : [];
   build.selections = selections
-    .map((selection) => ({
-      choiceId: sanitizeRuleId(selection?.choiceId),
-      selectedOptionIds: sanitizeIdList(selection?.selectedOptionIds, 100),
-    }))
+    .map((selection) => {
+      const rawChoiceId = sanitizeStringField(selection?.choiceId, 120);
+      const choiceId = sanitizeRuleId(rawChoiceId);
+      const optionIds = Array.isArray(selection?.selectedOptionIds) ? selection.selectedOptionIds : [];
+      const invalidOptionIds = optionIds
+        .map((id) => sanitizeStringField(id, 120))
+        .filter((id) => id && !sanitizeRuleId(id));
+      if (rawChoiceId && !choiceId) build.migration.unresolved.push({
+        field: 'selections.choiceId', value: rawChoiceId,
+        reason: 'This choice key is not a valid local rules ID; the original build is retained in the migration backup.', candidateIds: [],
+      });
+      if (invalidOptionIds.length) build.migration.unresolved.push({
+        field: `selections.${rawChoiceId || 'unknown'}.selectedOptionIds`,
+        value: invalidOptionIds.join(', ').slice(0, 300),
+        reason: 'One or more selected values are not valid local rule IDs; their original values are retained in the migration backup.',
+        candidateIds: [],
+      });
+      return {
+        choiceId,
+        selectedOptionIds: sanitizeIdList(optionIds, 100),
+        manualValue: sanitizeStringField(selection?.manualValue, 2000),
+        manualConfirmed: selection?.manualConfirmed === true,
+      };
+    })
     .filter((selection) => selection.choiceId)
     .slice(0, 200);
 
@@ -316,6 +414,7 @@ function sanitizeCharacterBuild(input, existing) {
     skills: sanitizeIdList(proficiencies.skills, 100),
     tools: sanitizeIdList(proficiencies.tools, 100),
     languages: sanitizeIdList(proficiencies.languages, 100),
+    savingThrows: sanitizeIdList(proficiencies.savingThrows, 6),
   };
 
   const roleplay = { ...defaults.roleplay, ...(previous.roleplay || {}), ...(source.roleplay || {}) };
@@ -330,6 +429,7 @@ function sanitizeCharacterBuild(input, existing) {
       build.overrides[key] = Validators.clampInt(overrideSource[key], range[0], range[1], range[0]);
     }
   }
+  if (build.migration.unresolved.length && build.migration.version > 0) build.migration.state = 'review';
   return build;
 }
 

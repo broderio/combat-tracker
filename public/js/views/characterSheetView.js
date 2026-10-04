@@ -13,6 +13,7 @@ import { ApiClient } from '../api.js';
 import { clientState } from '../state.js';
 
 import { openCharacterModal } from './characterModalView.js';
+import { calculateProficiencyBonus } from '/shared/characterBuilder.js';
 
 const ownCharacterView = document.getElementById('own-character-view');
 const allCharactersView = document.getElementById('all-characters-view');
@@ -42,12 +43,15 @@ function buildCharacterCard(character, { showEditButton, showQuickEdit, username
 
   const card = buildSheetCard({
     name: character.name,
-    meta: readOnly ? null : `Level ${character.level} ${character.race ? character.race + ' ' : ''}${character.class || ''}`,
+    meta: readOnly ? null : `Level ${character.level} ${character.race ? character.race + ' ' : ''}${character.class || ''}${character.background ? ` · ${character.background}` : ''}`,
     stats: readOnly
       ? []
       : [
           ['AC', character.ac],
           ['HP', `${character.hp.current}/${character.hp.max}`],
+          ['PB (calculated)', calculateProficiencyBonus(Number(character.level)) === null
+            ? 'Unresolved'
+            : `+${calculateProficiencyBonus(Number(character.level))}`],
         ],
     hp: character.hp,
     spellSlotsEl,

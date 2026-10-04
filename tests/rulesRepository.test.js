@@ -66,6 +66,108 @@ test('rules repository filters catalog summaries without loading detail records'
   ]);
 });
 
+test('rules repository finds a generated full-caster progression for multiclass slots', async () => {
+  const records = {
+    '/rules/index.json': {
+      schemaVersion: 4,
+      edition: '2024',
+      classes: [
+        { id: 'barbarian', name: 'Barbarian', path: 'classes/barbarian.json' },
+        { id: 'wizard', name: 'Wizard', path: 'classes/wizard.json' },
+      ],
+    },
+    '/rules/classes/barbarian.json': { id: 'barbarian', spellcasting: null },
+    '/rules/classes/wizard.json': {
+      id: 'wizard',
+      name: 'Wizard',
+      sources: [{ publication: 'Player’s Handbook' }],
+      spellcasting: { type: 'full', slotsByLevel: { 4: { 1: 4, 2: 3 } } },
+    },
+  };
+  const fetched = [];
+  const repository = new RulesRepository({
+    baseUrl: 'http://localhost/rules/',
+    fetchImpl: async (url) => {
+      const pathname = new URL(url).pathname;
+      fetched.push(pathname);
+      return records[pathname] ? response(records[pathname]) : response({}, false, 404);
+    },
+  });
+
+  const table = await repository.getMulticlassSpellSlotTable();
+  const cached = await repository.getMulticlassSpellSlotTable();
+  assert.equal(table.classId, 'wizard');
+  assert.deepEqual(table.slotsByLevel[4], { 1: 4, 2: 3 });
+  assert.equal(table.sources[0].publication, 'Player’s Handbook');
+  assert.equal(cached, table);
+  assert.equal(fetched.filter((path) => path === '/rules/index.json').length, 1);
+});
+
+test('rules repository audits every builder-facing class, subclass, and catalog record for handoff', async () => {
+  const records = {
+    '/rules/index.json': {
+      schemaVersion: 4,
+      edition: '2024',
+      classes: [{
+        id: 'fighter', name: 'Fighter', path: 'classes/fighter/class.json',
+        subclasses: [{ id: 'battle-master', name: 'Battle Master', path: 'classes/fighter/battle-master.json' }],
+      }],
+      catalogs: {
+        species: { path: 'species/index.json' },
+        backgrounds: { path: 'backgrounds/index.json' },
+        feats: { path: 'feats/index.json' },
+        spells: { path: 'spells/index.json' },
+        equipment: { path: 'equipment/index.json' },
+      },
+    },
+    '/rules/classes/fighter/class.json': {
+      kind: 'class', id: 'fighter', name: 'Fighter', sources: [{ publication: 'Player’s Handbook' }],
+      featuresByLevel: { 1: [{ name: 'Fighting Style', description: 'Choose a fighting style feat.' }] },
+      choices: [{
+        id: 'fighter-fighting-style', level: 1, feature: 'Fighting Style',
+        prompt: 'Choose a feat.', selection: { count: 1 }, options: [],
+        optionSource: { type: 'future-list' },
+      }],
+    },
+    '/rules/classes/fighter/battle-master.json': {
+      kind: 'subclass', id: 'battle-master', classId: 'fighter', name: 'Battle Master', choices: [],
+    },
+    '/rules/species/index.json': { items: [{ id: 'human', name: 'Human', path: 'species/human.json' }] },
+    '/rules/backgrounds/index.json': { items: [{ id: 'acolyte', name: 'Acolyte', path: 'backgrounds/acolyte.json' }] },
+    '/rules/feats/index.json': { items: [{ id: 'alert', name: 'Alert', path: 'feats/alert.json' }] },
+    '/rules/spells/index.json': { items: [{ id: 'shield', name: 'Shield', path: 'spells/shield.json' }] },
+    '/rules/equipment/index.json': { items: [{ id: 'longsword', name: 'Longsword', path: 'equipment/longsword.json' }] },
+    '/rules/species/human.json': {
+      kind: 'species', id: 'human', name: 'Human', traits: [{ id: 'skillful', name: 'Skillful', description: 'Choose one skill of your choice.' }],
+    },
+    '/rules/backgrounds/acolyte.json': {
+      kind: 'background', id: 'acolyte', name: 'Acolyte', abilityScores: [{ id: 'wis', name: 'Wisdom' }],
+      equipment: { raw: 'Choose A or B', options: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }] },
+    },
+    '/rules/feats/alert.json': { kind: 'feat', id: 'alert', name: 'Alert', description: 'A clear benefit.', prerequisites: null },
+    '/rules/spells/shield.json': { kind: 'spell', id: 'shield', name: 'Shield', level: 1, classes: ['wizard'] },
+    '/rules/equipment/longsword.json': { kind: 'equipment', id: 'longsword', name: 'Longsword', category: 'weapon' },
+  };
+  const fetched = [];
+  const repository = new RulesRepository({
+    baseUrl: 'http://localhost/rules/',
+    fetchImpl: async (url) => {
+      const pathname = new URL(url).pathname;
+      fetched.push(pathname);
+      return records[pathname] ? response(records[pathname]) : response({}, false, 404);
+    },
+  });
+
+  const audit = await repository.auditResolutionCoverage({ concurrency: 3 });
+
+  assert.equal(audit.format, 'dnd-tracker-rules-resolution-audit');
+  assert.ok(audit.items.some((item) => item.choiceId === 'fighter-fighting-style' && item.issueCode === 'unsupported-option-resolver'));
+  assert.ok(audit.items.some((item) => item.choiceId === 'adapter:human:trait:skillful'));
+  assert.ok(audit.items.some((item) => item.choiceId === 'adapter:acolyte:ability-scores'));
+  assert.ok(fetched.includes('/rules/classes/fighter/battle-master.json'));
+  assert.ok(fetched.includes('/rules/equipment/longsword.json'));
+});
+
 test('rules repository refuses absolute and traversal paths', async () => {
   let fetchCount = 0;
   const repository = new RulesRepository({

@@ -98,59 +98,46 @@
 
     <!-- Character create/edit modal, reused pre-join and mid-game -->
     <div id="character-modal" class="modal-overlay hidden">
-      <div class="modal-card">
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="character-modal-title">
         <h2 id="character-modal-title">New Character</h2>
-        <div class="char-form-grid">
-          <label
-            >Name
-            <input id="cf-name" type="text" maxlength="60" />
-          </label>
-          <label
-            >Class
-            <input id="cf-class" type="text" maxlength="40" list="cf-class-options" placeholder="Choose or enter a class" />
-            <datalist id="cf-class-options"></datalist>
-          </label>
-          <label
-            >Species
-            <input id="cf-race" type="text" maxlength="40" list="cf-race-options" placeholder="Choose or enter a species" />
-            <datalist id="cf-race-options"></datalist>
-          </label>
-          <label
-            >Background
-            <input id="cf-background" type="text" maxlength="60" list="cf-background-options" placeholder="Choose or enter a background" />
-            <datalist id="cf-background-options"></datalist>
-          </label>
-          <label
-            >Level
-            <input id="cf-level" type="number" min="1" max="20" value="1" />
-          </label>
-          <label
-            >Armor Class
-            <input id="cf-ac" type="number" min="0" max="40" value="10" />
-          </label>
-          <label
-            >HP (current)
-            <input id="cf-hp-current" type="number" min="-9999" max="9999" value="10" />
-          </label>
-          <label
-            >HP (max)
-            <input id="cf-hp-max" type="number" min="0" max="9999" value="10" />
-          </label>
-        </div>
-        <p id="cf-rules-provenance" class="hint" aria-live="polite"></p>
+        <!-- Kept only as storage adapters for older characters; new labels come from stable local rule IDs. -->
+        <input id="cf-class" type="hidden" />
+        <input id="cf-race" type="hidden" />
+        <input id="cf-background" type="hidden" />
+        <section id="cf-builder-basics-fields" class="cf-builder-form-group" data-builder-step="basics">
+          <div class="char-form-grid">
+            <label>Name <input id="cf-name" type="text" maxlength="60" autocomplete="off" /></label>
+            <label>Target character level <input id="cf-level" type="number" min="1" max="20" value="1" /></label>
+            <label>Armor Class <input id="cf-ac" type="number" min="0" max="40" value="10" /></label>
+            <label>HP (current) <input id="cf-hp-current" type="number" min="-9999" max="9999" value="10" /></label>
+            <label>HP (max) <input id="cf-hp-max" type="number" min="0" max="9999" value="10" /></label>
+          </div>
+          <p class="hint">AC and HP remain editable tracker values; the builder does not replace them with guesses.</p>
+        </section>
+        <section id="cf-builder-species-fields" class="cf-builder-form-group" data-builder-step="species">
+          <div id="cf-species-picker-host"></div>
+          <p id="cf-rules-provenance" class="hint" aria-live="polite"></p>
+        </section>
         <section id="cf-rule-builder" aria-label="Rules-backed character builder"></section>
 
-        <h3>Ability Scores</h3>
-        <div class="ability-grid">
-          <label>STR <input id="cf-str" type="number" min="1" max="30" value="10" /></label>
-          <label>DEX <input id="cf-dex" type="number" min="1" max="30" value="10" /></label>
-          <label>CON <input id="cf-con" type="number" min="1" max="30" value="10" /></label>
-          <label>INT <input id="cf-int" type="number" min="1" max="30" value="10" /></label>
-          <label>WIS <input id="cf-wis" type="number" min="1" max="30" value="10" /></label>
-          <label>CHA <input id="cf-cha" type="number" min="1" max="30" value="10" /></label>
-        </div>
+        <section id="cf-builder-ability-fields" class="cf-builder-form-group" data-builder-step="ability">
+          <h3>Ability Scores</h3>
+          <div id="cf-ability-method-host"></div>
+          <p id="cf-ability-summary" class="cf-builder-inline-status" aria-live="polite"></p>
+          <div class="ability-grid">
+            <label>STR <input id="cf-str" type="number" min="1" max="30" value="10" /></label>
+            <label>DEX <input id="cf-dex" type="number" min="1" max="30" value="10" /></label>
+            <label>CON <input id="cf-con" type="number" min="1" max="30" value="10" /></label>
+            <label>INT <input id="cf-int" type="number" min="1" max="30" value="10" /></label>
+            <label>WIS <input id="cf-wis" type="number" min="1" max="30" value="10" /></label>
+            <label>CHA <input id="cf-cha" type="number" min="1" max="30" value="10" /></label>
+          </div>
+        </section>
 
-        <h3>Max Spell Slots</h3>
+        <section id="cf-builder-tracker-fields" class="cf-builder-form-group" data-builder-step="review">
+        <h3>Combat sheet details</h3>
+        <p class="hint">Current HP, slot maxima, attacks, spells, features, notes, and token color remain editable combat-tracker values; calculations above never overwrite them.</p>
+        <h3>Editable spell-slot maxima</h3>
         <div id="cf-spell-slot-max-grid" class="ability-grid"></div>
 
         <label class="notes-label"
@@ -206,12 +193,14 @@
         <button id="cf-add-feature-btn" type="button" class="secondary-btn">+ Add Feature</button>
         <div id="cf-features-list" class="cf-entry-list"></div>
 
-        <label>Color <input id="cf-token-color" type="color" value="#e63946" /></label>
+        <label>Token color <input id="cf-token-color" type="color" value="#e63946" /></label>
+        </section>
 
+        <p id="cf-save-status" class="cf-builder-inline-status" role="status" aria-live="polite"></p>
         <div class="modal-actions">
-          <button id="cf-cancel-btn" class="secondary-btn">Cancel</button>
-          <button id="cf-delete-btn" class="secondary-btn">Delete</button>
-          <button id="cf-save-btn" class="primary-btn">Save</button>
+          <button id="cf-cancel-btn" type="button" class="secondary-btn">Cancel</button>
+          <button id="cf-delete-btn" type="button" class="secondary-btn">Delete</button>
+          <button id="cf-save-btn" type="button" class="primary-btn">Save</button>
         </div>
       </div>
     </div>

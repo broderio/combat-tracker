@@ -3,13 +3,16 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 import { Character, Encounter } from '../shared/schema.js';
+import { migrateCharacterBuild } from '../shared/characterMigration.js';
+import { localRulesDatabase } from './localRules.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DB_PATH = path.join(__dirname, '..', 'data', 'db.json');
 
 export class Database {
-  constructor(dbPath) {
+  constructor(dbPath, { rulesDatabase = localRulesDatabase } = {}) {
     this.dbPath = dbPath;
+    this.rulesDatabase = rulesDatabase;
     this.nextCharId = Date.now();
     this.nextEncounterId = Date.now();
   }
@@ -78,7 +81,26 @@ export class Database {
   }
 
   sanitizeCharacter(input, existing) {
-    const c = Character.fromInput(input, existing);
+    const sanitized = Character.fromInput(input, existing);
+    let rules = {};
+    try {
+      const manifest = this.rulesDatabase.getManifest();
+      rules = {
+        classCatalog: manifest.classes,
+        speciesCatalog: this.rulesDatabase.getCatalog('species').items,
+        backgroundCatalog: this.rulesDatabase.getCatalog('backgrounds').items,
+        edition: manifest.edition,
+        databaseSchemaVersion: manifest.schemaVersion,
+      };
+    } catch {
+      // Keep legacy character operations available when the optional local rules database is absent.
+    }
+    const migration = migrateCharacterBuild(sanitized.toJSON(), {
+      ...rules,
+      sourceRecord: existing,
+      sourceBuild: existing?.build ?? input?.build ?? null,
+    });
+    const c = Character.fromInput(migration.character, sanitized);
     if (!existing) c.id = this.generateCharacterId();
     return c;
   }

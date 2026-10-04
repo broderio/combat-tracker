@@ -60,11 +60,13 @@ test('Character.default produces a character with default ability scores and emp
   assert.deepEqual(c.abilityScores, { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 });
   assert.deepEqual(c.attacks, []);
   assert.deepEqual(c.statusEffects, []);
-  assert.equal(c.build.schemaVersion, 1);
+  assert.equal(c.build.schemaVersion, 2);
   assert.equal(c.build.ruleset.edition, '2024');
+  assert.equal(c.build.migration.version, 0);
+  assert.equal(c.background, '');
 });
 
-test('Character.fromInput sanitizes versioned builder choices and caps total character level', () => {
+test('Character.fromInput sanitizes builder IDs while preserving explicit class-level allocations', () => {
   const c = Character.fromInput({
     build: {
       speciesId: 'human',
@@ -92,8 +94,11 @@ test('Character.fromInput sanitizes versioned builder choices and caps total cha
   assert.equal(c.build.abilityScoreMethod, 'point-buy');
   assert.deepEqual(c.build.classes, [
     { classId: 'fighter', classLevel: 12, subclassId: 'champion' },
-    { classId: 'wizard', classLevel: 8, subclassId: null },
+    { classId: 'wizard', classLevel: 12, subclassId: null },
+    { classId: null, classLevel: 1, subclassId: null },
   ]);
+  assert.ok(c.build.migration.unresolved.some((entry) => entry.field === 'backgroundId'));
+  assert.ok(c.build.migration.unresolved.some((entry) => entry.field === 'classes[2].classId'));
   assert.deepEqual(c.build.selections[0].selectedOptionIds, ['athletics']);
   assert.deepEqual(c.build.spells, [{ spellId: 'fireball', status: 'prepared', sourceClassId: 'wizard' }]);
   assert.deepEqual(c.build.proficiencies.skills, ['athletics']);
@@ -107,7 +112,7 @@ test('Character legacy saves migrate to builder defaults and partial builder edi
   const legacy = Character.fromInput({ name: 'Mira', class: 'Fighter', race: 'Human' }, null).toJSON();
   delete legacy.build;
   const migrated = Character.clone(legacy);
-  assert.equal(migrated.build.schemaVersion, 1);
+  assert.equal(migrated.build.schemaVersion, 2);
   assert.equal(migrated.build.speciesId, null);
 
   migrated.build = Character.fromInput({ build: {
@@ -120,6 +125,54 @@ test('Character legacy saves migrate to builder defaults and partial builder edi
   assert.equal(updated.build.backgroundId, 'acolyte');
   assert.equal(updated.build.classes[0].subclassId, 'champion');
   assert.deepEqual(updated.build.proficiencies.skills, ['athletics']);
+});
+
+test('Character.fromInput preserves manual choice text and confirmation in build selections', () => {
+  const character = Character.fromInput({
+    build: {
+      selections: [{
+        choiceId: 'fighter-3-maneuvers',
+        selectedOptionIds: ['trip-attack'],
+        manualValue: 'Confirmed manually from the feature text.',
+        manualConfirmed: true,
+      }],
+      proficiencies: { savingThrows: ['str', 'con'] },
+    },
+  }, null);
+
+  assert.deepEqual(character.build.selections, [{
+    choiceId: 'fighter-3-maneuvers',
+    selectedOptionIds: ['trip-attack'],
+    manualValue: 'Confirmed manually from the feature text.',
+    manualConfirmed: true,
+  }]);
+  assert.deepEqual(character.build.proficiencies.savingThrows, ['str', 'con']);
+});
+
+test('older partial build payloads cannot downgrade migration version or erase backup/review data', () => {
+  const originalBuild = {
+    schemaVersion: 1,
+    migration: {
+      version: 1,
+      state: 'review',
+      backup: {
+        sourceBuild: { schemaVersion: 1, classes: [] },
+        sourceCharacter: { name: 'Legacy' },
+        legacy: { class: 'Unknown', race: '', background: '', level: 1 },
+      },
+      unresolved: [{ field: 'class', value: 'Unknown', reason: 'No exact match.', candidateIds: [] }],
+    },
+  };
+  const existing = Character.fromInput({ build: originalBuild }, null);
+  const updated = Character.fromInput({ build: {
+    schemaVersion: 2,
+    migration: { version: 0, state: 'pending', backup: null, unresolved: [] },
+  } }, existing);
+
+  assert.equal(updated.build.migration.version, 1);
+  assert.equal(updated.build.migration.state, 'review');
+  assert.deepEqual(updated.build.migration.backup.sourceCharacter, { name: 'Legacy' });
+  assert.ok(updated.build.migration.unresolved.some((entry) => entry.value === 'Unknown'));
 });
 
 test('Character.fromInput sanitizes text fields and falls back to "Unnamed" when name is blank', () => {
