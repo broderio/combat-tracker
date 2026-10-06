@@ -11,12 +11,92 @@ import {
 
 import { ApiClient } from '../api.js';
 import { clientState } from '../state.js';
+import { rulesRepository } from '../rulesRepository.js';
 
 import { openCharacterModal } from './characterModalView.js';
 
 const ownCharacterView = document.getElementById('own-character-view');
 const allCharactersView = document.getElementById('all-characters-view');
 const publicRosterView = document.getElementById('public-roster-view');
+
+function appendRuleText(parent, label, text) {
+  if (!text) return;
+  const line = document.createElement('p');
+  line.className = 'local-rule-detail';
+  if (label) {
+    const strong = document.createElement('strong');
+    strong.textContent = `${label}: `;
+    line.appendChild(strong);
+  }
+  const value = document.createElement('span');
+  value.textContent = text;
+  line.appendChild(value);
+  parent.appendChild(line);
+}
+
+function buildCharacterRuleDetails(character) {
+  const container = document.createElement('div');
+  container.className = 'local-rule-records';
+  const selections = character.ruleSelections || {};
+  const requests = [];
+  if (selections.classId) requests.push(['Class', rulesRepository.getClass(selections.classId)]);
+  if (selections.subclassId && selections.classId) {
+    requests.push(['Subclass', rulesRepository.getSubclass(selections.classId, selections.subclassId)]);
+  }
+  if (selections.speciesId) requests.push(['Species', rulesRepository.getCatalogRecord('species', selections.speciesId)]);
+  if (selections.backgroundId) requests.push(['Background', rulesRepository.getCatalogRecord('backgrounds', selections.backgroundId)]);
+  (selections.featIds || []).forEach((id) => requests.push(['Feat', rulesRepository.getCatalogRecord('feats', id)]));
+  if (!requests.length) return null;
+
+  Promise.all(requests.map(async ([kind, request]) => [kind, await request])).then((records) => {
+    records.forEach(([kind, record]) => {
+      const section = document.createElement('article');
+      section.className = 'local-rule-record';
+      const heading = document.createElement('h4');
+      heading.textContent = record?.name || `${kind} record unavailable`;
+      section.appendChild(heading);
+      if (!record) {
+        appendRuleText(section, null, 'This local rule record could not be loaded.');
+        container.appendChild(section);
+        return;
+      }
+
+      appendRuleText(section, null, record.description);
+      if (kind === 'Class' || kind === 'Subclass') {
+        if (kind === 'Class') {
+          appendRuleText(section, 'Hit die', record.hitDie ? `d${record.hitDie}` : null);
+          appendRuleText(section, 'Primary ability', record.primaryAbility?.abilities?.join(' or '));
+          appendRuleText(section, 'Saving throws', record.savingThrows?.join(', '));
+          appendRuleText(section, 'Armor', record.proficiencies?.armor?.raw);
+          appendRuleText(section, 'Weapons', record.proficiencies?.weapons?.raw);
+          appendRuleText(section, 'Skills', record.proficiencies?.skills?.raw);
+        }
+        const currentLevel = Number(character.level) || 1;
+        Object.entries(record.featuresByLevel || {}).filter(([level]) => Number(level) <= currentLevel).forEach(([level, features]) => {
+          (features || []).forEach((feature) => appendRuleText(section, `${feature.name} (Level ${level})`, feature.description));
+        });
+      } else if (kind === 'Species') {
+        appendRuleText(section, 'Creature type', record.creatureType);
+        appendRuleText(section, 'Size', record.size);
+        appendRuleText(section, 'Speed', record.speed?.raw);
+        (record.traits || []).forEach((trait) => appendRuleText(section, trait.name, trait.description));
+      } else if (kind === 'Background') {
+        appendRuleText(section, 'Ability score options', record.abilityScores?.map((score) => score.name).join(', '));
+        appendRuleText(section, 'Granted feat', record.feat?.name);
+        appendRuleText(section, 'Skill proficiencies', record.skillProficiencies?.map((skill) => skill.name).join(', '));
+        appendRuleText(section, 'Tool proficiency', record.toolProficiency);
+        appendRuleText(section, 'Equipment', record.equipment?.raw);
+      } else if (kind === 'Feat') {
+        appendRuleText(section, 'Prerequisite', record.prerequisites?.raw || record.prerequisites);
+        appendRuleText(section, 'Benefits', Array.isArray(record.benefits) ? record.benefits.map((benefit) => benefit.description || benefit.name).filter(Boolean).join('\n') : null);
+      }
+      const sourceNames = [...new Set((record.sources || []).map((source) => source.publication || source.title).filter(Boolean))];
+      appendRuleText(section, 'Source', sourceNames.join(', '));
+      container.appendChild(section);
+    });
+  }).catch(() => appendRuleText(container, null, 'Some local rule details could not be loaded.'));
+  return container;
+}
 
 function buildCharacterCard(character, { showEditButton, showQuickEdit, username, readOnly } = {}) {
   let editButtonEl = null;
@@ -40,9 +120,9 @@ function buildCharacterCard(character, { showEditButton, showQuickEdit, username
         }
   );
 
-  const card = buildSheetCard({
+    const card = buildSheetCard({
     name: character.name,
-    meta: readOnly ? null : `Level ${character.level} ${character.race ? character.race + ' ' : ''}${character.class || ''}`,
+      meta: readOnly ? null : `Level ${character.level} ${character.race ? character.race + ' ' : ''}${character.class || ''}`,
     stats: readOnly
       ? []
       : [
@@ -58,6 +138,7 @@ function buildCharacterCard(character, { showEditButton, showQuickEdit, username
     sections: readOnly
       ? []
       : [
+          { title: 'Character Options', contentEl: buildCharacterRuleDetails(character) },
           { title: 'Attacks', contentEl: buildAttacksList(character.attacks), count: character.attacks?.length },
           { title: 'Features', contentEl: buildFeatureList(character.features), count: character.features?.length },
           { title: 'Spells', contentEl: buildFlatSpellList(character.spells), count: character.spells?.length },

@@ -202,16 +202,16 @@ function sanitizeStringField(value, maxLength) {
   return String(value).trim().slice(0, maxLength);
 }
 
-// Attack/feature/spell combat stats aren't reliably parseable out of
-// dnd-data (weapon items carry prose, not structured to-hit/damage), so
-// players search dnd-data for a name to reference and fill in the rest by
-// hand — same reasoning the server applies to monster class-feature prose.
+// Rule-backed selections store local database IDs; combat values that are
+// manually entered remain character-owned state.
 function sanitizeAttack(a) {
   if (!a || typeof a !== 'object') return null;
   const name = sanitizeStringField(a.name, 60);
   if (!name) return null;
   return {
     name,
+    equipmentId: sanitizeStringField(a.equipmentId, 100) || null,
+    equipmentName: sanitizeStringField(a.equipmentName, 80) || null,
     toHit: sanitizeStringField(a.toHit, 20) || null,
     damage: sanitizeStringField(a.damage, 40) || null,
     damageType: sanitizeStringField(a.damageType, 30) || null,
@@ -226,17 +226,46 @@ function sanitizeFeature(f) {
   return { name, desc: sanitizeStringField(f.desc, 1000) };
 }
 
-// Spells come from dnd-data search results, which do carry structured
-// level/school fields, so those are kept as-is rather than free text.
 function sanitizeSpell(s) {
   if (!s || typeof s !== 'object') return null;
-  const name = sanitizeStringField(s.name, 80);
-  if (!name) return null;
+  const id = sanitizeStringField(s.id, 100).toLowerCase();
+  return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id) ? { id } : null;
+}
+
+function sanitizeId(value) {
+  const id = sanitizeStringField(value, 100).toLowerCase();
+  return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id) ? id : null;
+}
+
+function sanitizeRuleSelections(value, existing = {}) {
+  const input = value && typeof value === 'object' ? value : {};
+  const prior = existing && typeof existing === 'object' ? existing : {};
+  const featIds = input.featIds === undefined ? prior.featIds : input.featIds;
   return {
-    name,
-    level: Validators.clampInt(s.level, 0, 9, 0),
-    school: sanitizeStringField(s.school, 30) || null,
+    classId: input.classId === undefined ? sanitizeId(prior.classId) : sanitizeId(input.classId),
+    subclassId: input.subclassId === undefined ? sanitizeId(prior.subclassId) : sanitizeId(input.subclassId),
+    speciesId: input.speciesId === undefined ? sanitizeId(prior.speciesId) : sanitizeId(input.speciesId),
+    backgroundId: input.backgroundId === undefined ? sanitizeId(prior.backgroundId) : sanitizeId(input.backgroundId),
+    featIds: Array.isArray(featIds) ? [...new Set(featIds.map(sanitizeId).filter(Boolean))].slice(0, 40) : [],
+    ruleset: {
+      edition: '2024',
+      databaseSchemaVersion: 4,
+    },
   };
+}
+
+function cloneBoundedJson(value, depth = 0) {
+  if (depth > 6) return null;
+  if (value === null || typeof value === 'boolean') return value;
+  if (typeof value === 'string') return value.slice(0, 2000);
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (Array.isArray(value)) return value.slice(0, 100).map((item) => cloneBoundedJson(item, depth + 1));
+  if (typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).slice(0, 100).map(([key, item]) => [key.slice(0, 100), cloneBoundedJson(item, depth + 1)])
+    );
+  }
+  return null;
 }
 
 function defaultSpellSlots() {
@@ -347,6 +376,8 @@ export class Character {
     this.attacks = [];
     this.features = [];
     this.spells = [];
+    this.ruleSelections = sanitizeRuleSelections(null);
+    this.build = null;
     this.spellSlots = defaultSpellSlots();
     for (const key of ABILITY_KEYS) this.abilityScores[key] = 10;
     for (const field of CHARACTER_FIELDS) this[field.key] = field.default;
@@ -365,6 +396,8 @@ export class Character {
     c.attacks = (existing.attacks || []).map((a) => ({ ...a }));
     c.features = (existing.features || []).map((f) => ({ ...f }));
     c.spells = (existing.spells || []).map((s) => ({ ...s }));
+    c.ruleSelections = sanitizeRuleSelections(existing.ruleSelections);
+    c.build = cloneBoundedJson(existing.build);
     c.spellSlots = cloneSpellSlots(existing.spellSlots);
     return c;
   }
@@ -419,6 +452,20 @@ export class Character {
       c.spells = list.map(sanitizeSpell).filter(Boolean).slice(0, 40);
     }
 
+    if (input.build !== undefined) c.build = cloneBoundedJson(input.build);
+
+    if (input.ruleSelections !== undefined) {
+      c.ruleSelections = sanitizeRuleSelections(input.ruleSelections, c.ruleSelections);
+      if (c.build && typeof c.build === 'object') {
+        c.build.speciesId = c.ruleSelections.speciesId;
+        c.build.backgroundId = c.ruleSelections.backgroundId;
+        c.build.classes = c.ruleSelections.classId
+          ? [{ classId: c.ruleSelections.classId, classLevel: c.level, subclassId: c.ruleSelections.subclassId }]
+          : [];
+        c.build.ruleset = { ...c.ruleSelections.ruleset };
+      }
+    }
+
     if (input.spellSlotMax !== undefined) applySpellSlotMax(c.spellSlots, input.spellSlotMax);
     if (input.spellSlots !== undefined) applySpellSlotCurrent(c.spellSlots, input.spellSlots);
 
@@ -439,6 +486,8 @@ export class Character {
       attacks: this.attacks.map((a) => ({ ...a })),
       features: this.features.map((f) => ({ ...f })),
       spells: this.spells.map((s) => ({ ...s })),
+      ruleSelections: sanitizeRuleSelections(this.ruleSelections),
+      ...(this.build ? { build: cloneBoundedJson(this.build) } : {}),
       spellSlots: cloneSpellSlots(this.spellSlots),
     };
     for (const field of CHARACTER_FIELDS) out[field.key] = this[field.key];

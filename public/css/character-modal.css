@@ -55,6 +55,7 @@
 }
 
 .char-form-grid input,
+.char-form-grid select,
 .ability-grid input,
 .notes-label textarea {
   display: block;
@@ -67,6 +68,10 @@
   color: var(--parchment);
   font-family: inherit;
   font-size: 0.95rem;
+}
+
+.char-form-grid select {
+  color-scheme: dark;
 }
 
 .ability-grid {
@@ -92,16 +97,65 @@
   flex-direction: column;
   gap: 6px;
 }
+.cf-recommendations {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0 14px;
+}
+.cf-recommendation-group {
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--wood);
+}
+.cf-recommendation-group h4 {
+  margin: 0 0 6px;
+  color: var(--parchment);
+  font-size: 0.82rem;
+}
+.cf-recommendation-group p {
+  margin: 4px 0;
+  color: var(--parchment-dim);
+  font-size: 0.78rem;
+}
+.cf-recommendation-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px 0;
+  color: var(--parchment-dim);
+  font-size: 0.78rem;
+}
+.cf-recommendation-row span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.cf-recommendation-row button {
+  flex: 0 0 auto;
+  width: auto;
+  padding: 4px 8px;
+}
 .cf-entry-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  flex-wrap: wrap;
   background: var(--wood-light);
   border: 1px solid var(--line);
   border-radius: 5px;
   padding: 6px 10px;
   font-size: 0.8rem;
+  color: var(--parchment-dim);
+}
+.cf-entry-rule-details {
+  flex: 1 0 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  line-height: 1.4;
   color: var(--parchment-dim);
 }
 .cf-entry-row strong {

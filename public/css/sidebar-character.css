@@ -1,13 +1,61 @@
+.local-rule-records {
+  display: grid;
+  gap: 10px;
+}
+
+.local-rule-record h4 {
+  margin: 4px 0 6px;
+  color: var(--parchment);
+}
+
+.local-rule-detail,
+.local-rule-description,
+.local-rule-effect {
+  margin: 5px 0;
+  color: var(--parchment-dim);
+  white-space: pre-wrap;
+  line-height: 1.45;
+}
+
+.local-rule-detail strong {
+  color: var(--parchment);
+}
+
+.local-rule-effect {
+  padding-left: 10px;
+  border-left: 2px solid var(--line);
+}
 /* ---------- Character sidebar (in-game) ---------- */
 /* TODO: Make the character sidebar vertically scrollable. */
 #character-sidebar {
-  width: auto;
-  flex-shrink: 0;
+  flex: 0 1 320px;
+  width: 320px;
+  min-width: 0;
+  max-width: min(360px, 35vw);
+  box-sizing: border-box;
   background: var(--wood-light);
   border-left: 1px solid var(--line);
   padding: 18px;
   overflow-y: auto;
+  overflow-x: hidden;
   min-height: 0;
+}
+
+#own-character-view,
+#all-characters-view,
+#public-roster-section,
+#public-roster-view,
+.char-sheet-card,
+.char-sheet-card details,
+.char-sheet-card .monster-details-body,
+.char-sheet-card .monster-spell-group,
+.char-sheet-card .monster-attack,
+.local-rule-records,
+.local-rule-record {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: normal;
 }
 
 #character-sidebar h2 {
@@ -56,6 +104,7 @@
 }
 
 .char-sheet-card {
+  box-sizing: border-box;
   width: 100%;
   min-width: 0;
   max-width: 100%;
@@ -65,6 +114,19 @@
   border-radius: 8px;
   padding: 14px;
   margin-bottom: 14px;
+}
+
+.char-sheet-card .monster-details-body,
+.char-sheet-card .monster-spell-group,
+.char-sheet-card .monster-attack-details,
+.char-sheet-card .local-rule-description,
+.char-sheet-card .local-rule-effect {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .char-sheet-name {
@@ -84,6 +146,17 @@
   font-size: 0.8rem;
   color: var(--parchment-dim);
   margin: 2px 0 10px;
+}
+
+.local-rule-description,
+.local-rule-effect,
+.local-rule-detail,
+.local-weapon-details {
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: pre-wrap;
 }
 
 .char-sheet-stats {

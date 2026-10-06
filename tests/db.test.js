@@ -39,6 +39,27 @@ test('sanitizeCharacter assigns a new id for brand-new characters and keeps exis
   assert.equal(edited.name, 'Finn Updated');
 });
 
+test('sanitizeCharacter enforces local rules as the authority for linked selections', () => {
+  const database = makeTempDb();
+  const character = database.sanitizeCharacter({
+    class: 'Unlisted Class',
+    race: 'Unlisted Species',
+    ruleSelections: {
+      classId: 'unknown-class',
+      speciesId: 'unknown-species',
+      backgroundId: 'criminal',
+      featIds: ['alert', 'unknown-feat'],
+    },
+    spells: [{ id: 'fireball' }, { id: 'unknown-spell' }],
+  }, null);
+  assert.equal(character.class, '');
+  assert.equal(character.race, '');
+  assert.equal(character.ruleSelections.classId, null);
+  assert.equal(character.ruleSelections.backgroundId, 'criminal');
+  assert.deepEqual(character.ruleSelections.featIds, ['alert']);
+  assert.deepEqual(character.spells, [{ id: 'fireball' }]);
+});
+
 test('findCharacter returns null for unknown username or character id', () => {
   const database = makeTempDb();
   assert.equal(database.findCharacter('nobody', 'char_1'), null);

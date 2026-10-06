@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 import { Character, Encounter } from '../shared/schema.js';
+import { localRules } from './localRules.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DB_PATH = path.join(__dirname, '..', 'data', 'db.json');
@@ -79,6 +80,37 @@ export class Database {
 
   sanitizeCharacter(input, existing) {
     const c = Character.fromInput(input, existing);
+    const selections = c.ruleSelections;
+    const classRecord = selections.classId ? localRules.getClass(selections.classId) : null;
+    const subclassRecord = classRecord
+      ? (classRecord.subclasses || []).find((subclass) => subclass.id === selections.subclassId)
+      : null;
+    const speciesRecord = selections.speciesId ? localRules.getRecordById('species', selections.speciesId) : null;
+    const backgroundRecord = selections.backgroundId ? localRules.getRecordById('backgrounds', selections.backgroundId) : null;
+    c.ruleSelections = {
+      ...selections,
+      classId: classRecord?.id || null,
+      subclassId: subclassRecord?.id || null,
+      speciesId: speciesRecord?.id || null,
+      backgroundId: backgroundRecord?.id || null,
+      featIds: selections.featIds.filter((id) => localRules.getRecordById('feats', id)),
+    };
+    c.class = classRecord?.name || '';
+    c.race = speciesRecord?.name || '';
+    c.spells = c.spells.filter((spell) => localRules.getRecordById('spells', spell.id));
+    c.attacks = c.attacks.map((attack) => ({
+      ...attack,
+      equipmentId: attack.equipmentId && localRules.getRecordById('equipment', attack.equipmentId) ? attack.equipmentId : null,
+      equipmentName: attack.equipmentId && localRules.getRecordById('equipment', attack.equipmentId)?.name || null,
+    }));
+    if (c.build) {
+      c.build.speciesId = c.ruleSelections.speciesId;
+      c.build.backgroundId = c.ruleSelections.backgroundId;
+      c.build.classes = classRecord
+        ? [{ classId: classRecord.id, classLevel: c.level, subclassId: c.ruleSelections.subclassId }]
+        : [];
+      c.build.ruleset = { ...c.ruleSelections.ruleset };
+    }
     if (!existing) c.id = this.generateCharacterId();
     return c;
   }

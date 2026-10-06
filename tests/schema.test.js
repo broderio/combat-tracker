@@ -88,17 +88,57 @@ test('Character.fromInput keeps only known status effects and respects custom st
   assert.equal(c.customStatusEffects[0].key, 'custom-blessed');
 });
 
-test('Character.fromInput drops attacks/features/spells with no name', () => {
+test('Character.fromInput drops attacks/features without names and spells without local IDs', () => {
   const c = Character.fromInput(
     {
       attacks: [{ name: 'Longsword', damage: '1d8' }, { name: '' }, {}],
-      spells: [{ name: 'Fireball', level: 3 }],
+      spells: [{ id: 'fireball' }, { name: 'Fireball', level: 3 }],
     },
     null
   );
   assert.equal(c.attacks.length, 1);
   assert.equal(c.attacks[0].name, 'Longsword');
-  assert.equal(c.spells[0].level, 3);
+  assert.deepEqual(c.spells, [{ id: 'fireball' }]);
+});
+
+test('Character.fromInput keeps bounded local weapon identity on attacks', () => {
+  const c = Character.fromInput({
+    attacks: [{ name: 'Longsword', equipmentId: 'longsword', equipmentName: 'Longsword', damage: '1d8', damageType: 'slashing' }],
+  }, null);
+  assert.equal(c.attacks[0].equipmentId, 'longsword');
+  assert.equal(c.attacks[0].equipmentName, 'Longsword');
+  assert.equal(c.attacks[0].damageType, 'slashing');
+});
+
+test('Character.fromInput stores sanitized stable rule selection IDs', () => {
+  const c = Character.fromInput({
+    ruleSelections: {
+      classId: 'Fighter',
+      speciesId: 'tiefling',
+      backgroundId: 'criminal',
+      featIds: ['alert', 'bad id', 'alert'],
+    },
+  }, null);
+  assert.deepEqual(c.ruleSelections, {
+    classId: 'fighter',
+    subclassId: null,
+    speciesId: 'tiefling',
+    backgroundId: 'criminal',
+    featIds: ['alert'],
+    ruleset: { edition: '2024', databaseSchemaVersion: 4 },
+  });
+});
+
+test('Character sanitization preserves bounded build metadata and synchronizes local selections', () => {
+  const c = Character.fromInput({
+    level: 5,
+    build: { inventory: [{ id: 'healing-potion', quantity: 2 }], roleplay: { ideals: 'Protect the village' } },
+    ruleSelections: { classId: 'fighter', speciesId: 'tiefling', backgroundId: 'criminal', featIds: ['alert'] },
+  }, null);
+  assert.equal(c.build.inventory[0].quantity, 2);
+  assert.equal(c.build.roleplay.ideals, 'Protect the village');
+  assert.deepEqual(c.build.classes, [{ classId: 'fighter', classLevel: 5, subclassId: null }]);
+  assert.equal(c.build.speciesId, 'tiefling');
 });
 
 test('Character.condition() reflects current hp state', () => {

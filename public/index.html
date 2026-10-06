@@ -107,13 +107,19 @@
           </label>
           <label
             >Class
-            <input id="cf-class" type="text" maxlength="40" list="cf-class-options" placeholder="e.g. Ranger" />
-            <datalist id="cf-class-options"></datalist>
+            <select id="cf-class"><option value="">Choose a class</option></select>
           </label>
           <label
-            >Race
-            <input id="cf-race" type="text" maxlength="40" list="cf-race-options" placeholder="e.g. Half-Elf" />
-            <datalist id="cf-race-options"></datalist>
+            >Species
+            <select id="cf-race"><option value="">Choose a species</option></select>
+          </label>
+          <label
+            >Background
+            <select id="cf-background"><option value="">Choose a background</option></select>
+          </label>
+          <label
+            >Subclass
+            <select id="cf-subclass" disabled><option value="">Choose a class first</option></select>
           </label>
           <label
             >Level
@@ -156,11 +162,12 @@
           ></textarea>
         </label>
 
-        <h3>Attacks</h3>
+        <h3>Weapons &amp; Attacks</h3>
+        <p class="hint">Choose a local weapon to include its properties and damage details. To-hit bonuses and character-specific modifications can still be edited below.</p>
         <div class="char-form-grid">
           <label
             >Weapon lookup
-            <input id="cf-attack-search" type="text" list="cf-weapon-options" placeholder="Search dnd-data weapons…" />
+            <input id="cf-attack-search" type="text" list="cf-weapon-options" placeholder="Search local equipment…" />
             <datalist id="cf-weapon-options"></datalist>
           </label>
           <label>To Hit <input id="cf-attack-tohit" type="text" maxlength="20" placeholder="+5" /></label>
@@ -178,25 +185,38 @@
         <div class="char-form-grid">
           <label
             >Spell lookup
-            <input id="cf-spell-search" type="text" list="cf-spell-options" placeholder="Search dnd-data spells…" />
+            <input id="cf-spell-search" type="text" list="cf-spell-options" placeholder="Search local spells…" />
             <datalist id="cf-spell-options"></datalist>
           </label>
         </div>
         <button id="cf-add-spell-btn" type="button" class="secondary-btn">+ Add Spell</button>
         <div id="cf-spells-list" class="cf-entry-list"></div>
 
-        <h3>Features</h3>
+        <h3>Feats — Local Rulebook Options</h3>
+        <p class="hint">Suggestions come from documented class/subclass feat choices and your selected level. Prerequisites still need to be checked; suggestions are never added automatically.</p>
+        <div id="cf-recommended-feats" class="cf-recommendations" aria-live="polite"></div>
+        <div class="char-form-grid">
+          <label
+            >Feat lookup
+            <input id="cf-feat-search" type="text" list="cf-feat-options" placeholder="Search local feats…" />
+            <datalist id="cf-feat-options"></datalist>
+          </label>
+        </div>
+        <button id="cf-add-feat-btn" type="button" class="secondary-btn">+ Add Feat from Lookup</button>
+        <div id="cf-feats-list" class="cf-entry-list"></div>
+
+        <h3>Custom Features</h3>
         <p class="hint">
-          Class features are prose in the source data and aren't searchable — add them by hand.
+          Manually recorded character abilities, traits, or notes. These are separate from database-backed Feats above.
         </p>
         <div class="char-form-grid">
-          <label>Feature Name <input id="cf-feature-name" type="text" maxlength="60" placeholder="e.g. Fighting Style" /></label>
+          <label>Custom Feature Name <input id="cf-feature-name" type="text" maxlength="60" placeholder="e.g. Second Wind" /></label>
         </div>
         <label class="notes-label"
-          >Feature Description
+          >Custom Feature Description
           <textarea id="cf-feature-desc" maxlength="1000" rows="2"></textarea>
         </label>
-        <button id="cf-add-feature-btn" type="button" class="secondary-btn">+ Add Feature</button>
+        <button id="cf-add-feature-btn" type="button" class="secondary-btn">+ Add Custom Feature</button>
         <div id="cf-features-list" class="cf-entry-list"></div>
 
         <label>Color <input id="cf-token-color" type="color" value="#e63946" /></label>

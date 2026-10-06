@@ -45,6 +45,8 @@ export const ROUTES = {
   characterOptionsRaces: '/character-options/races',
   characterOptionsWeapons: '/character-options/weapons',
   characterOptionsSpells: '/character-options/spells',
+  characterOptionsBackgrounds: '/character-options/backgrounds',
+  characterOptionsFeats: '/character-options/feats',
   encounters: '/encounters',
   encounter: '/encounters/:id',
   encounterLoad: '/encounters/:id/load',
