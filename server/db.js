@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-import { Character, Encounter } from '../shared/schema.js';
+import { Character, Encounter, RULES_SCHEMA_VERSION } from '../shared/schema.js';
 import { localRules } from './localRules.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -21,32 +21,56 @@ export class Database {
       this.saveDB(fresh);
       return fresh;
     }
+    let parsed;
     try {
-      const raw = fs.readFileSync(this.dbPath, 'utf8');
-      const parsed = JSON.parse(raw);
-      let dirty = false;
-      if (!parsed.users) {
-        parsed.users = {};
-        dirty = true;
-      }
-      if (!parsed.encounters) {
-        parsed.encounters = [];
-        dirty = true;
-      }
-      // Hardcoded DM credentials, manually edited in data/db.json — kept out
-      // of the regular `users` map so players logging in as themselves can
-      // never collide with (or enumerate) the DM account. Persisted back to
-      // disk immediately so the field is visible to edit even before anyone
-      // else triggers a save.
-      if (!parsed.dm || typeof parsed.dm !== 'object') {
-        parsed.dm = { username: 'dm', pin: '0000' };
-        dirty = true;
-      }
-      if (dirty) this.saveDB(parsed);
-      return parsed;
+      parsed = JSON.parse(fs.readFileSync(this.dbPath, 'utf8'));
     } catch (err) {
       console.error('Failed to read db.json, starting fresh:', err.message);
       return { users: {}, encounters: [], dm: { username: 'dm', pin: '0000' } };
+    }
+    this.assertCurrentSchema(parsed);
+    let dirty = false;
+    if (!parsed.users) {
+      parsed.users = {};
+      dirty = true;
+    }
+    if (!parsed.encounters) {
+      parsed.encounters = [];
+      dirty = true;
+    }
+    // Hardcoded DM credentials, manually edited in data/db.json — kept out
+    // of the regular `users` map so players logging in as themselves can
+    // never collide with (or enumerate) the DM account. Persisted back to
+    // disk immediately so the field is visible to edit even before anyone
+    // else triggers a save.
+    if (!parsed.dm || typeof parsed.dm !== 'object') {
+      parsed.dm = { username: 'dm', pin: '0000' };
+      dirty = true;
+    }
+    if (dirty) this.saveDB(parsed);
+    return parsed;
+  }
+
+  assertCurrentSchema(database) {
+    const stale = [];
+    for (const [username, user] of Object.entries(database.users || {})) {
+      for (const character of user.characters || []) {
+        if (character.schemaVersion !== RULES_SCHEMA_VERSION || character.kind !== 'character' || !character.state?.hitPoints) {
+          stale.push(`character ${username}/${character.id || 'unknown'}`);
+        }
+      }
+    }
+    const inspectSnapshot = (snapshot, label) => {
+      for (const [id, instance] of Object.entries(snapshot?.monsterInstances || {})) {
+        if (instance.schemaVersion !== RULES_SCHEMA_VERSION || instance.kind !== 'monster-instance' || !instance.templateId || !instance.state?.hitPoints) {
+          stale.push(`monster instance ${label}/${id}`);
+        }
+      }
+    };
+    inspectSnapshot(database.board, 'board');
+    for (const encounter of database.encounters || []) inspectSnapshot(encounter.snapshot, `encounter/${encounter.id}`);
+    if (stale.length) {
+      throw new Error(`Saved data is not schema v6 (${stale.slice(0, 10).join(', ')}). Back up db.json, review a dry run with scripts/migrateRulesDatabase.js, then explicitly run it with --write.`);
     }
   }
 
@@ -80,37 +104,45 @@ export class Database {
 
   sanitizeCharacter(input, existing) {
     const c = Character.fromInput(input, existing);
-    const selections = c.ruleSelections;
-    const classRecord = selections.classId ? localRules.getClass(selections.classId) : null;
-    const subclassRecord = classRecord
-      ? (classRecord.subclasses || []).find((subclass) => subclass.id === selections.subclassId)
-      : null;
-    const speciesRecord = selections.speciesId ? localRules.getRecordById('species', selections.speciesId) : null;
-    const backgroundRecord = selections.backgroundId ? localRules.getRecordById('backgrounds', selections.backgroundId) : null;
-    c.ruleSelections = {
-      ...selections,
-      classId: classRecord?.id || null,
-      subclassId: subclassRecord?.id || null,
-      speciesId: speciesRecord?.id || null,
-      backgroundId: backgroundRecord?.id || null,
-      featIds: selections.featIds.filter((id) => localRules.getRecordById('feats', id)),
-    };
-    c.class = classRecord?.name || '';
-    c.race = speciesRecord?.name || '';
-    c.spells = c.spells.filter((spell) => localRules.getRecordById('spells', spell.id));
-    c.attacks = c.attacks.map((attack) => ({
-      ...attack,
-      equipmentId: attack.equipmentId && localRules.getRecordById('equipment', attack.equipmentId) ? attack.equipmentId : null,
-      equipmentName: attack.equipmentId && localRules.getRecordById('equipment', attack.equipmentId)?.name || null,
-    }));
-    if (c.build) {
-      c.build.speciesId = c.ruleSelections.speciesId;
-      c.build.backgroundId = c.ruleSelections.backgroundId;
-      c.build.classes = classRecord
-        ? [{ classId: classRecord.id, classLevel: c.level, subclassId: c.ruleSelections.subclassId }]
-        : [];
-      c.build.ruleset = { ...c.ruleSelections.ruleset };
+    c.classes = c.classes.flatMap((selection) => {
+      const classRecord = localRules.getClass(selection.classId);
+      if (!classRecord) return [];
+      const subclassId = selection.subclassId && classRecord.subclasses?.some(({ id }) => id === selection.subclassId)
+        ? selection.subclassId : null;
+      return [{ ...selection, classId: classRecord.id, subclassId }];
+    });
+    c.classes = c.classes.filter((selection, index, entries) => entries.findIndex(({ classId }) => classId === selection.classId) === index);
+    if (c.classes.length) {
+      let excess = c.classes.reduce((sum, selection) => sum + selection.classLevel, 0) - 20;
+      for (let index = c.classes.length - 1; index >= 0 && excess > 0; index -= 1) {
+        const reduction = Math.min(excess, c.classes[index].classLevel - 1);
+        c.classes[index].classLevel -= reduction;
+        excess -= reduction;
+      }
     }
+    if (c.speciesId && !localRules.getRecordById('species', c.speciesId)) c.speciesId = null;
+    if (c.backgroundId && !localRules.getRecordById('backgrounds', c.backgroundId)) c.backgroundId = null;
+    c.featIds = c.featIds.filter((id) => localRules.getRecordById('feats', id));
+    c.spellIds = c.spellIds.filter((id) => localRules.getRecordById('spells', id));
+    c.equipment = c.equipment.filter(({ equipmentId }) => localRules.getRecordById('equipment', equipmentId));
+
+    const choices = new Map();
+    const addChoices = (record) => (record?.choices || []).forEach((choice) => choices.set(choice.id, choice));
+    c.classes.forEach(({ classId, subclassId }) => {
+      const classRecord = localRules.getClass(classId);
+      addChoices(classRecord);
+      if (subclassId) addChoices(localRules.getSubclass(classId, subclassId));
+    });
+    addChoices(c.speciesId && localRules.getRecordById('species', c.speciesId));
+    addChoices(c.backgroundId && localRules.getRecordById('backgrounds', c.backgroundId));
+    c.featIds.forEach((id) => addChoices(localRules.getRecordById('feats', id)));
+    c.selections = c.selections.flatMap((selection) => {
+      const choice = choices.get(selection.choiceId);
+      if (!choice) return [];
+      const validOptionIds = new Set((choice.options || []).map(({ id }) => id));
+      const selectedOptionIds = selection.selectedOptionIds.filter((id) => !validOptionIds.size || validOptionIds.has(id));
+      return [{ choiceId: choice.id, selectedOptionIds }];
+    });
     if (!existing) c.id = this.generateCharacterId();
     return c;
   }

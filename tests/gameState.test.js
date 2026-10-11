@@ -108,7 +108,11 @@ test('toSnapshotJSON + restoreSnapshot round-trips the full board state', () => 
 
 test('combatantStatuses in getState reflects a linked character\'s condition via the db lookup', () => {
   const fakeDb = makeFakeDb();
-  fakeDb.findCharacter = () => ({ hp: { current: 0, max: 10 }, statusEffects: ['poisoned'], customStatusEffects: [] });
+  fakeDb.findCharacter = () => ({ state: {
+    hitPoints: { current: 0, maximum: 10, temporary: 0 },
+    conditions: [{ id: 'poisoned', sourceId: null, duration: null }],
+    customConditions: [],
+  } });
   const store = new GameStateStore(fakeDb);
 
   const token = store.addToken({ name: 'Hero', col: 0, row: 0, owner: 'alice', combatantId: 'char_1', combatantType: 'character' });

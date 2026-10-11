@@ -1,10 +1,11 @@
-import { Character, SPELL_LEVELS } from '/shared/schema.js';
+import { Character } from '/shared/schema.js';
 import { ApiClient } from '../api.js';
 import { clientState } from '../state.js';
 import { renderCharacterSelectList } from './characterSelectView.js';
 import { renderOwnCharacterView } from './characterSheetView.js';
 import { rulesRepository } from '../rulesRepository.js';
 import { buildFeatRecommendationGroups } from '../featRecommendations.js';
+import { composeClassSelections } from '/shared/characterBuild.js';
 
 const characterModal = document.getElementById('character-modal');
 const characterModalTitle = document.getElementById('character-modal-title');
@@ -12,32 +13,16 @@ const cfCancelBtn = document.getElementById('cf-cancel-btn');
 const cfDeleteBtn = document.getElementById('cf-delete-btn');
 const cfSaveBtn = document.getElementById('cf-save-btn');
 
-const cfSpellSlotMaxGrid = document.getElementById('cf-spell-slot-max-grid');
-const cfSpellSlotMaxInputs = {};
-SPELL_LEVELS.forEach((level) => {
-  const label = document.createElement('label');
-  label.textContent = `Lvl ${level} `;
-  const input = document.createElement('input');
-  input.type = 'number';
-  input.min = '0';
-  input.max = '99';
-  input.value = '0';
-  label.appendChild(input);
-  cfSpellSlotMaxGrid.appendChild(label);
-  cfSpellSlotMaxInputs[level] = input;
-});
-
 const cfClassInput = document.getElementById('cf-class');
+const cfAdditionalClasses = document.getElementById('cf-additional-classes');
+const cfAddClassBtn = document.getElementById('cf-add-class-btn');
+const cfRuleChoices = document.getElementById('cf-rule-choices');
 const cfRaceInput = document.getElementById('cf-race');
 const cfBackgroundInput = document.getElementById('cf-background');
 const cfSubclassInput = document.getElementById('cf-subclass');
 
 const cfAttackSearch = document.getElementById('cf-attack-search');
 const cfWeaponOptions = document.getElementById('cf-weapon-options');
-const cfAttackToHit = document.getElementById('cf-attack-tohit');
-const cfAttackDamage = document.getElementById('cf-attack-damage');
-const cfAttackDamageType = document.getElementById('cf-attack-damagetype');
-const cfAttackDesc = document.getElementById('cf-attack-desc');
 const cfAddAttackBtn = document.getElementById('cf-add-attack-btn');
 const cfAttacksList = document.getElementById('cf-attacks-list');
 
@@ -113,12 +98,21 @@ function updateSubclassPicker(selectedId = '') {
   cfSubclassInput.value = selectedId;
 }
 
-cfClassInput.addEventListener('change', () => updateSubclassPicker());
+cfClassInput.addEventListener('change', () => characterModalView.handlePrimaryClassChange());
 loadRulePickers().catch(() => {});
 
-cfClassInput.addEventListener('change', () => characterModalView.refreshFeatRecommendations());
-cfSubclassInput.addEventListener('change', () => characterModalView.refreshFeatRecommendations());
+cfClassInput.addEventListener('change', () => {
+  characterModalView.refreshFeatRecommendations();
+  characterModalView.renderRuleChoices();
+});
+cfSubclassInput.addEventListener('change', () => {
+  characterModalView.refreshFeatRecommendations();
+  characterModalView.renderRuleChoices();
+});
+cfRaceInput.addEventListener('change', () => characterModalView.renderRuleChoices());
+cfBackgroundInput.addEventListener('change', () => characterModalView.renderRuleChoices());
 document.getElementById('cf-level').addEventListener('input', () => characterModalView.refreshFeatRecommendations());
+document.getElementById('cf-level').addEventListener('input', () => characterModalView.renderRuleChoices());
 
 cfAttackSearch.addEventListener('change', async () => {
   const selected = weaponResultsByName.get(cfAttackSearch.value.trim());
@@ -126,10 +120,7 @@ cfAttackSearch.addEventListener('change', async () => {
   try {
     const record = await rulesRepository.getCatalogRecord('equipment', selected.id);
     if (!record) return;
-    const dice = record.damage?.dice;
-    const baseDamage = dice ? `${dice.count}d${dice.sides}${record.damage.flat ? `+${record.damage.flat}` : ''}` : record.damage?.raw || '';
-    cfAttackDamage.value = cfAttackDamage.value.trim() || baseDamage;
-    cfAttackDamageType.value = cfAttackDamageType.value.trim() || record.damage?.damageType || '';
+    cfAttackSearch.dataset.selectedId = record.id;
   } catch {}
 });
 
@@ -182,36 +173,220 @@ export class CharacterModalView {
 
     // Working copies of the searchable-picker-backed lists, edited in the
     // modal and only written back onto the character on Save.
-    this.attacks = [];
+    this.equipment = [];
     this.spells = [];
     this.featIds = [];
     this.features = [];
     this.recommendationRequest = 0;
+    this.choiceRequest = 0;
+    this.additionalClassSelections = [];
+    this.activePrimarySelection = null;
 
+    cfAddClassBtn.addEventListener('click', () => this.addClass());
     cfAddAttackBtn.addEventListener('click', () => this.addAttack());
     cfAddSpellBtn.addEventListener('click', () => this.addSpell());
     cfAddFeatBtn.addEventListener('click', () => this.addFeat());
     cfAddFeatureBtn.addEventListener('click', () => this.addFeature());
   }
 
+  handlePrimaryClassChange() {
+    const selectedId = cfClassInput.value;
+    const previousPrimary = this.activePrimarySelection ? {
+      ...this.activePrimarySelection,
+      classLevel: Number.parseInt(document.getElementById('cf-level').value, 10) || 1,
+      subclassId: cfSubclassInput.value || null,
+    } : null;
+    const known = [...(this.additionalClassSelections || []), ...(this.currentClassSelections || [])]
+      .find(({ classId }) => classId === selectedId);
+    if (known) {
+      document.getElementById('cf-level').value = known.classLevel;
+      updateSubclassPicker(known.subclassId || '');
+    } else {
+      document.getElementById('cf-level').value = 1;
+      updateSubclassPicker();
+    }
+    const currentSecondary = (this.additionalClassSelections || []).filter(({ classId }) => classId !== selectedId);
+    if (previousPrimary?.classId && previousPrimary.classId !== selectedId
+      && !currentSecondary.some(({ classId }) => classId === previousPrimary.classId)) {
+      currentSecondary.push(previousPrimary);
+    }
+    this.additionalClassSelections = currentSecondary;
+    this.activePrimarySelection = selectedId ? {
+      classId: selectedId,
+      classLevel: Number.parseInt(document.getElementById('cf-level').value, 10) || 1,
+      subclassId: cfSubclassInput.value || null,
+    } : null;
+    this.renderAdditionalClasses();
+  }
+
+  addClass() {
+    this.additionalClassSelections.push({ classId: '', classLevel: 1, subclassId: null });
+    this.renderAdditionalClasses();
+  }
+
+  renderAdditionalClasses() {
+    cfAdditionalClasses.replaceChildren();
+    this.additionalClassSelections.forEach((selection, index) => {
+      const row = document.createElement('div');
+      row.className = 'cf-class-entry';
+      const classSelect = document.createElement('select');
+      classSelect.setAttribute('aria-label', `Additional class ${index + 1}`);
+      classSelect.add(new Option('Choose a class', ''));
+      classEntries.forEach(({ id, name }) => {
+        const option = new Option(name, id);
+        if (id === cfClassInput.value || this.additionalClassSelections.some((entry, otherIndex) => otherIndex !== index && entry.classId === id)) option.disabled = true;
+        classSelect.add(option);
+      });
+      classSelect.value = selection.classId || '';
+
+      const subclassSelect = document.createElement('select');
+      subclassSelect.setAttribute('aria-label', `Additional subclass ${index + 1}`);
+      const selectedClass = classEntries.find(({ id }) => id === selection.classId);
+      const subclasses = selectedClass?.subclasses || [];
+      subclassSelect.add(new Option(subclasses.length ? 'No subclass' : 'No subclasses listed', ''));
+      subclasses.forEach(({ id, name }) => subclassSelect.add(new Option(name, id)));
+      subclassSelect.disabled = !subclasses.length;
+      subclassSelect.value = selection.subclassId || '';
+
+      const levelInput = document.createElement('input');
+      levelInput.type = 'number';
+      levelInput.min = '1';
+      levelInput.max = '20';
+      levelInput.value = selection.classLevel || 1;
+      levelInput.setAttribute('aria-label', `Additional class ${index + 1} level`);
+
+      classSelect.addEventListener('change', () => {
+        selection.classId = classSelect.value;
+        selection.subclassId = null;
+        this.renderAdditionalClasses();
+        this.renderRuleChoices();
+      });
+      subclassSelect.addEventListener('change', () => { selection.subclassId = subclassSelect.value || null; this.renderRuleChoices(); });
+      levelInput.addEventListener('input', () => {
+        selection.classLevel = Math.max(1, Math.min(20, Number.parseInt(levelInput.value, 10) || 1));
+        this.renderRuleChoices();
+      });
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'cf-entry-remove-btn';
+      remove.textContent = 'Remove';
+      remove.setAttribute('aria-label', `Remove additional class ${index + 1}`);
+      remove.addEventListener('click', () => {
+        this.additionalClassSelections.splice(index, 1);
+        this.renderAdditionalClasses();
+        this.renderRuleChoices();
+      });
+      row.append(classSelect, subclassSelect, levelInput, remove);
+      cfAdditionalClasses.appendChild(row);
+    });
+  }
+
+  async renderRuleChoices() {
+    const request = ++this.choiceRequest;
+    cfRuleChoices.replaceChildren();
+    const primary = cfClassInput.value ? [{ classId: cfClassInput.value, classLevel: Number(document.getElementById('cf-level').value) || 1, subclassId: cfSubclassInput.value || null }] : [];
+    const classSelections = composeClassSelections(primary[0] || null, this.additionalClassSelections, this.currentClassSelections);
+    const records = [];
+    for (const selection of classSelections) {
+      const classRecord = await rulesRepository.getClass(selection.classId);
+      if (classRecord) records.push({ record: classRecord, classLevel: selection.classLevel });
+      if (selection.subclassId) {
+        const subclass = await rulesRepository.getSubclass(selection.classId, selection.subclassId);
+        if (subclass) records.push({ record: subclass, classLevel: selection.classLevel });
+      }
+    }
+    const selectedSpecies = cfRaceInput.value;
+    const selectedBackground = cfBackgroundInput.value;
+    const [speciesRecord, backgroundRecord] = await Promise.all([
+      selectedSpecies ? rulesRepository.getCatalogRecord('species', selectedSpecies) : null,
+      selectedBackground ? rulesRepository.getCatalogRecord('backgrounds', selectedBackground) : null,
+    ]);
+    if (speciesRecord) records.push({ record: speciesRecord, classLevel: 1 });
+    if (backgroundRecord) records.push({ record: backgroundRecord, classLevel: 1 });
+    for (const featId of this.featIds) {
+      const feat = await rulesRepository.getCatalogRecord('feats', featId);
+      if (feat) records.push({ record: feat, classLevel: 1 });
+    }
+    const catalogs = await Promise.all(['feats', 'equipment', 'spells'].map((id) => rulesRepository.getCatalog(id).catch(() => ({ items: [] }))));
+    if (request !== this.choiceRequest) return;
+    const optionsBySource = {
+      'feat-list': catalogs[0].items,
+      'weapon-list': catalogs[1].items.filter(({ category }) => category === 'weapon'),
+      'spell-list': catalogs[2].items,
+      'character-spellbook': catalogs[2].items,
+      'skill-list': ['Acrobatics', 'Animal Handling', 'Arcana', 'Athletics', 'Deception', 'History', 'Insight', 'Intimidation', 'Investigation', 'Medicine', 'Nature', 'Perception', 'Performance', 'Persuasion', 'Religion', 'Sleight of Hand', 'Stealth', 'Survival']
+        .map((name) => ({ id: name.toLowerCase().replace(/[^a-z0-9]+/g, '-'), name })),
+      'language-list': ['Common', 'Common Sign Language', 'Draconic', 'Dwarvish', 'Elvish', 'Giant', 'Gnomish', 'Goblin', 'Halfling', 'Orc', 'Abyssal', 'Celestial', 'Deep Speech', 'Infernal', 'Primordial', 'Sylvan', 'Undercommon']
+        .map((name) => ({ id: name.toLowerCase().replace(/[^a-z0-9]+/g, '-'), name })),
+      'selected-feat-spellcasting-ability': ['str', 'dex', 'con', 'int', 'wis', 'cha'].map((id) => ({ id, name: id.toUpperCase() })),
+      'abilities-without-saving-throw-proficiency': ['str', 'dex', 'con', 'int', 'wis', 'cha'].map((id) => ({ id, name: id.toUpperCase() })),
+    };
+    const choiceEntries = records.flatMap(({ record, classLevel }, recordOrder) => (record.choices || [])
+      .filter((choice) => choice.scope !== 'progression' || Number(choice.level) <= classLevel)
+      .map((choice) => ({ record, choice, classLevel, recordOrder })));
+    const seen = new Set();
+    choiceEntries.forEach(({ record, choice }) => {
+      if (seen.has(choice.id)) return;
+      seen.add(choice.id);
+      const section = document.createElement('section');
+      section.className = 'cf-recommendation-group';
+      const heading = document.createElement('h4');
+      heading.textContent = `${record.name}: ${choice.feature}`;
+      const prompt = document.createElement('p');
+      prompt.textContent = choice.prompt || 'Review this choice in the source feature.';
+      section.append(heading, prompt);
+      const candidateItems = choice.options?.length
+        ? choice.options.map(({ id, label, description }) => ({ id, name: label, description }))
+        : optionsBySource[choice.optionSource?.type] || [];
+      if (candidateItems.length) {
+        const input = document.createElement('select');
+        input.multiple = true;
+        input.size = Math.min(6, Math.max(2, candidateItems.length));
+        input.setAttribute('aria-label', `${choice.feature} choices for ${record.name}`);
+        const existing = this.currentSelections.find(({ choiceId }) => choiceId === choice.id)?.selectedOptionIds || [];
+        candidateItems.forEach((item) => {
+          const option = new Option(item.name || item.label || item.id, item.id);
+          option.selected = existing.includes(item.id);
+          input.add(option);
+        });
+        input.addEventListener('change', () => {
+          const selectedOptionIds = [...input.selectedOptions].map(({ value }) => value);
+          const max = Number(choice.selection?.count ?? choice.selection?.max);
+          if (Number.isInteger(max) && max > 0 && selectedOptionIds.length > max) {
+            [...input.options].forEach((option) => { option.selected = selectedOptionIds.slice(0, max).includes(option.value); });
+          }
+          const next = [...input.selectedOptions].map(({ value }) => value);
+          this.currentSelections = this.currentSelections.filter(({ choiceId }) => choiceId !== choice.id);
+          if (next.length) this.currentSelections.push({ choiceId: choice.id, selectedOptionIds: next });
+        });
+        section.appendChild(input);
+        if (!choice.options?.length) {
+          const caution = document.createElement('p');
+          const sourceType = choice.optionSource?.type;
+          caution.textContent = ['skill-list', 'language-list', 'selected-feat-spellcasting-ability'].includes(sourceType)
+            ? 'Choose from these stable options. Confirm any source-specific limits or eligibility in the full feature text.'
+            : 'Candidate list only; the source record does not fully encode all eligibility or dependencies. Verify before selecting.';
+          section.appendChild(caution);
+        }
+      } else {
+        const unresolved = document.createElement('p');
+        unresolved.className = 'hint';
+        unresolved.textContent = choice.unresolvedReason || 'No complete structured options are available; use the prompt and feature description as a manual reference.';
+        section.appendChild(unresolved);
+      }
+      cfRuleChoices.appendChild(section);
+    });
+    if (!choiceEntries.length) cfRuleChoices.textContent = 'No generated choices are listed for the current selections.';
+  }
+
   addAttack() {
     const name = cfAttackSearch.value.trim();
     if (!name) return;
     const equipment = weaponResultsByName.get(name) || null;
-    this.attacks.push({
-      name,
-      equipmentId: equipment?.id || null,
-      equipmentName: equipment?.name || null,
-      toHit: cfAttackToHit.value.trim() || null,
-      damage: cfAttackDamage.value.trim() || null,
-      damageType: cfAttackDamageType.value.trim() || null,
-      desc: cfAttackDesc.value.trim(),
-    });
+    if (!equipment || this.equipment.some((entry) => entry.equipmentId === equipment.id)) return;
+    this.equipment.push({ equipmentId: equipment.id, quantity: 1, equipped: true });
     cfAttackSearch.value = '';
-    cfAttackToHit.value = '';
-    cfAttackDamage.value = '';
-    cfAttackDamageType.value = '';
-    cfAttackDesc.value = '';
+    delete cfAttackSearch.dataset.selectedId;
     this.renderAttacksList();
   }
 
@@ -220,7 +395,7 @@ export class CharacterModalView {
     if (!name) return;
     const known = spellResultsByName.get(name);
     if (!known) return;
-    if (!this.spells.some((spell) => spell.id === known.id)) this.spells.push({ id: known.id });
+    if (!this.spells.includes(known.id)) this.spells.push(known.id);
     cfSpellSearch.value = '';
     this.renderSpellsList();
   }
@@ -231,6 +406,7 @@ export class CharacterModalView {
     if (!this.featIds.includes(known.id)) this.featIds.push(known.id);
     cfFeatSearch.value = '';
     this.renderFeatsList();
+    this.renderRuleChoices();
   }
 
   async refreshFeatRecommendations() {
@@ -289,6 +465,7 @@ export class CharacterModalView {
             this.featIds.push(feat.id);
             this.renderFeatsList();
             this.refreshFeatRecommendations();
+            this.renderRuleChoices();
           });
           row.append(description, addButton);
           section.appendChild(row);
@@ -303,7 +480,8 @@ export class CharacterModalView {
   addFeature() {
     const name = cfFeatureName.value.trim();
     if (!name) return;
-    this.features.push({ name, desc: cfFeatureDesc.value.trim() });
+    const id = `custom-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-+|-+$)/g, '')}`;
+    this.features.push({ id, name, description: cfFeatureDesc.value.trim(), resolution: 'manual' });
     cfFeatureName.value = '';
     cfFeatureDesc.value = '';
     this.renderFeaturesList();
@@ -311,19 +489,15 @@ export class CharacterModalView {
 
   renderAttacksList() {
     cfAttacksList.innerHTML = '';
-    this.attacks.forEach((attack, index) => {
-      const parts = [attack.toHit ? `${attack.toHit} to hit` : null, attack.damage ? attack.damage : null].filter(
-        Boolean
-      );
-      const label = `${attack.name}${parts.length ? ' — ' + parts.join(', ') : ''}`;
-      const row = buildEntryRow(label, () => {
-        this.attacks.splice(index, 1);
+    this.equipment.forEach((entry, index) => {
+      const row = buildEntryRow(entry.equipmentId, () => {
+        this.equipment.splice(index, 1);
         this.renderAttacksList();
       });
       cfAttacksList.appendChild(row);
-      if (attack.equipmentId) {
-        rulesRepository.getCatalogRecord('equipment', attack.equipmentId).then((record) => {
+      rulesRepository.getCatalogRecord('equipment', entry.equipmentId).then((record) => {
           if (!record || !row.isConnected) return;
+          row.firstChild.textContent = `${record.name}${entry.quantity > 1 ? ` ×${entry.quantity}` : ''}`;
           const details = document.createElement('div');
           details.className = 'cf-entry-rule-details';
           details.textContent = [
@@ -337,20 +511,19 @@ export class CharacterModalView {
           ].filter(Boolean).join(' · ');
           row.insertBefore(details, row.lastElementChild);
         }).catch(() => {});
-      }
     });
   }
 
   renderSpellsList() {
     cfSpellsList.innerHTML = '';
-    this.spells.forEach((spell, index) => {
-      const row = buildEntryRow(spellResultsById.get(spell.id)?.name || spell.name || spell.id, () => {
+    this.spells.forEach((spellId, index) => {
+      const row = buildEntryRow(spellResultsById.get(spellId)?.name || spellId, () => {
         this.spells.splice(index, 1);
         this.renderSpellsList();
       });
       cfSpellsList.appendChild(row);
-      if (!spellResultsById.has(spell.id)) {
-        rulesRepository.getCatalogRecord('spells', spell.id).then((record) => {
+      if (!spellResultsById.has(spellId)) {
+        rulesRepository.getCatalogRecord('spells', spellId).then((record) => {
           if (record && row.isConnected) row.firstChild.textContent = record.name;
         }).catch(() => {});
       }
@@ -363,6 +536,7 @@ export class CharacterModalView {
       const row = buildEntryRow([...featResultsByName.values()].find((feat) => feat.id === featId)?.name || featId, () => {
         this.featIds.splice(index, 1);
         this.renderFeatsList();
+        this.renderRuleChoices();
       });
       cfFeatsList.appendChild(row);
       rulesRepository.getCatalogRecord('feats', featId).then((record) => {
@@ -401,17 +575,20 @@ export class CharacterModalView {
     characterModalTitle.textContent = character ? `${character.name}` : 'New Character';
 
     const c = character || Character.default();
+    this.currentCharacterState = c.state;
+    this.currentClassSelections = c.classes;
+    this.currentSelections = c.selections;
 
     document.getElementById('cf-name').value = c.name;
-    const ruleSelections = c.ruleSelections || {};
-    cfClassInput.value = ruleSelections.classId || '';
-    updateSubclassPicker(ruleSelections.subclassId || '');
-    cfRaceInput.value = ruleSelections.speciesId || '';
-    cfBackgroundInput.value = ruleSelections.backgroundId || '';
-    document.getElementById('cf-level').value = c.level;
-    document.getElementById('cf-ac').value = c.ac;
-    document.getElementById('cf-hp-current').value = c.hp.current;
-    document.getElementById('cf-hp-max').value = c.hp.max;
+    const classSelection = c.classes[0] || {};
+    cfClassInput.value = classSelection.classId || '';
+    this.activePrimarySelection = classSelection.classId ? { ...classSelection } : null;
+    updateSubclassPicker(classSelection.subclassId || '');
+    cfRaceInput.value = c.speciesId || '';
+    cfBackgroundInput.value = c.backgroundId || '';
+    document.getElementById('cf-level').value = classSelection.classLevel || 1;
+    document.getElementById('cf-hp-current').value = c.state.hitPoints.current;
+    document.getElementById('cf-hp-max').value = c.state.hitPoints.maximum;
     document.getElementById('cf-str').value = c.abilityScores.str;
     document.getElementById('cf-dex').value = c.abilityScores.dex;
     document.getElementById('cf-con').value = c.abilityScores.con;
@@ -421,24 +598,24 @@ export class CharacterModalView {
     document.getElementById('cf-notes').value = c.notes || '';
     document.getElementById('cf-token-color').value = c.tokenColor || '#e63946';
 
-    SPELL_LEVELS.forEach((level) => {
-      cfSpellSlotMaxInputs[level].value = c.spellSlots?.[level]?.max ?? 0;
-    });
-
-    this.attacks = (c.attacks || []).map((a) => ({ ...a }));
-    this.spells = (c.spells || []).map((s) => ({ ...s }));
-    this.featIds = [...(ruleSelections.featIds || [])];
-    this.features = (c.features || []).map((f) => ({ ...f }));
+    this.equipment = c.equipment.map((entry) => ({ ...entry }));
+    this.spells = [...c.spellIds];
+    this.featIds = [...c.featIds];
+    this.features = c.customFeatures.map((feature) => ({ ...feature }));
+    this.currentClassSelections = c.classes.map((selection) => ({ ...selection }));
+    this.additionalClassSelections = this.currentClassSelections.slice(1).map((selection) => ({ ...selection }));
+    this.currentSelections = c.selections.map((selection) => ({
+      choiceId: selection.choiceId,
+      selectedOptionIds: [...selection.selectedOptionIds],
+    }));
+    this.renderAdditionalClasses();
     this.renderAttacksList();
     this.renderSpellsList();
     this.renderFeatsList();
     this.renderFeaturesList();
     this.refreshFeatRecommendations();
+    this.renderRuleChoices();
     cfAttackSearch.value = '';
-    cfAttackToHit.value = '';
-    cfAttackDamage.value = '';
-    cfAttackDamageType.value = '';
-    cfAttackDesc.value = '';
     cfSpellSearch.value = '';
     cfFeatSearch.value = '';
     cfFeatureName.value = '';
@@ -489,16 +666,28 @@ export class CharacterModalView {
   }
 
   async save() {
+    const level = Math.max(1, Math.min(20, Number.parseInt(document.getElementById('cf-level').value, 10) || 1));
+    const selectedClassId = cfClassInput.value || null;
+    const classes = composeClassSelections(
+      selectedClassId ? { classId: selectedClassId, classLevel: level, subclassId: cfSubclassInput.value || null } : null,
+      this.additionalClassSelections,
+      this.currentClassSelections,
+    );
+    const totalClassLevels = classes.reduce((total, selection) => total + selection.classLevel, 0);
+    if (totalClassLevels > 20) {
+      alert(`Class levels total ${totalClassLevels}; the maximum character level is 20. Adjust the class allocations before saving.`);
+      return;
+    }
     const payload = {
+      schemaVersion: 6,
+      kind: 'character',
       name: document.getElementById('cf-name').value.trim() || 'Unnamed',
-      class: cfClassInput.selectedOptions[0]?.textContent || '',
-      race: cfRaceInput.selectedOptions[0]?.textContent || '',
-      level: document.getElementById('cf-level').value,
-      ac: document.getElementById('cf-ac').value,
-      hp: {
-        current: document.getElementById('cf-hp-current').value,
-        max: document.getElementById('cf-hp-max').value,
-      },
+      classes,
+      speciesId: cfRaceInput.value || null,
+      backgroundId: cfBackgroundInput.value || null,
+      featIds: this.featIds,
+      equipment: this.equipment,
+      spellIds: this.spells,
       abilityScores: {
         str: document.getElementById('cf-str').value,
         dex: document.getElementById('cf-dex').value,
@@ -509,19 +698,13 @@ export class CharacterModalView {
       },
       notes: document.getElementById('cf-notes').value,
       tokenColor: document.getElementById('cf-token-color').value,
-      attacks: this.attacks,
-      spells: this.spells,
-      ruleSelections: {
-        classId: cfClassInput.value || null,
-        subclassId: cfSubclassInput.value || null,
-        speciesId: cfRaceInput.value || null,
-        backgroundId: cfBackgroundInput.value || null,
-        featIds: this.featIds,
-      },
-      features: this.features,
-      spellSlotMax: Object.fromEntries(
-        SPELL_LEVELS.map((level) => [level, cfSpellSlotMaxInputs[level].value])
-      ),
+      selections: this.currentSelections,
+      customFeatures: this.features,
+      state: { hitPoints: {
+        current: Number.parseInt(document.getElementById('cf-hp-current').value, 10),
+        maximum: Number.parseInt(document.getElementById('cf-hp-max').value, 10),
+        temporary: this.currentCharacterState?.hitPoints?.temporary ?? 0,
+      } },
     };
 
     try {

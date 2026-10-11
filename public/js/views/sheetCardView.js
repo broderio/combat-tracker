@@ -16,27 +16,28 @@ export function buildHpBar(hp) {
 
 /**
  * Renders one small bright-blue vertical rectangle per spell level that has
- * slots (max > 0), stacked left-to-right directly under the HP bar. Each
- * rectangle fills bottom-up in proportion to slots remaining (current/max),
+ * slots, stacked left-to-right directly under the HP bar. Each rectangle
+ * fills bottom-up using the static maximum and persisted expended count,
  * with the spell level printed centered on top of it. Left-click spends a
  * slot (fill drops), right-click restores one (fill rises) — the same
  * click-to-spend / right-click-to-undo pattern used nowhere else yet, so a
  * tooltip spells it out.
  *
- * @param {Record<number, {max:number, current:number}>} spellSlots
- * @param {((level: number, nextCurrent: number) => void)|null} [onChange] Omit/pass null for a
+ * @param {Record<number, {maximum:number, expended:number}>} spellSlots
+ * @param {((level: number, nextExpended: number) => void)|null} [onChange] Omit/pass null for a
  *   read-only display (e.g. another player's simplified stat block) — no click handlers attached.
  */
 export function buildSpellSlotsRow(spellSlots, onChange) {
   if (!spellSlots) return null;
-  const levels = SPELL_LEVELS.filter((level) => (spellSlots[level]?.max || 0) > 0);
+  const levels = SPELL_LEVELS.filter((level) => (spellSlots[level]?.maximum || 0) > 0);
   if (!levels.length) return null;
 
   const row = document.createElement('div');
   row.className = 'spell-slots-row';
 
   levels.forEach((level) => {
-    const { max, current } = spellSlots[level];
+    const { maximum, expended } = spellSlots[level];
+    const current = Math.max(0, maximum - expended);
 
     const column = document.createElement('div');
     column.className = 'spell-slot-column';
@@ -44,12 +45,12 @@ export function buildSpellSlotsRow(spellSlots, onChange) {
     const track = document.createElement('div');
     track.className = 'spell-slot-track' + (onChange ? '' : ' readonly');
     track.title = onChange
-      ? `Level ${level} slots: ${current}/${max} — click to spend, right-click to restore`
-      : `Level ${level} slots: ${current}/${max}`;
+      ? `Level ${level} slots: ${current}/${maximum} — click to spend, right-click to restore`
+      : `Level ${level} slots: ${current}/${maximum}`;
 
     const fill = document.createElement('div');
     fill.className = 'spell-slot-fill';
-    fill.style.height = `${max > 0 ? (current / max) * 100 : 0}%`;
+    fill.style.height = `${maximum > 0 ? (current / maximum) * 100 : 0}%`;
     track.appendChild(fill);
 
     const label = document.createElement('div');
@@ -59,11 +60,11 @@ export function buildSpellSlotsRow(spellSlots, onChange) {
 
     if (onChange) {
       track.addEventListener('click', () => {
-        if (current > 0) onChange(level, current - 1);
+        if (current > 0) onChange(level, expended + 1);
       });
       track.addEventListener('contextmenu', (e) => {
         e.preventDefault();
-        if (current < max) onChange(level, current + 1);
+        if (current < maximum && expended > 0) onChange(level, expended - 1);
       });
     }
 
@@ -161,6 +162,13 @@ export function buildAttacksList(attacks) {
   list.className = 'monster-attacks-list';
 
   attacks.forEach((attack) => {
+    const feature = attack.feature;
+    const attackBonus = Number.isFinite(feature?.attackRoll?.bonus) ? feature.attackRoll.bonus : null;
+    const damageParts = feature?.damage || [];
+    const healingParts = feature?.healing || [];
+    const rangeText = feature?.range ? `${feature.range.kind} ${feature.range.distance ?? ''}${feature.range.unit ? ` ${feature.range.unit}` : ''}`.trim() : null;
+    const areaText = feature?.area ? `${feature.area.size} ${feature.area.unit} ${feature.area.shape}` : null;
+    const saveText = feature?.save ? `${feature.save.ability || 'Unknown'} save` : null;
     const item = document.createElement('div');
     item.className = 'monster-attack';
 
@@ -171,13 +179,13 @@ export function buildAttacksList(attacks) {
     name.textContent = attack.name || 'Unnamed Attack';
     nameRow.appendChild(name);
 
-    if (attack.toHit || attack.damage) {
+    if (feature ? (attackBonus !== null || damageParts.length > 0) : (attack.toHit || attack.damage)) {
       const rollBtn = document.createElement('button');
       rollBtn.type = 'button';
       rollBtn.className = 'monster-attack-roll-btn';
       rollBtn.textContent = 'Roll';
       rollBtn.title = 'Roll to-hit and damage';
-      rollBtn.addEventListener('click', () => rollAttack(attack));
+      rollBtn.addEventListener('click', () => feature ? rollFeature(feature) : rollAttack(attack));
       nameRow.appendChild(rollBtn);
     }
 
@@ -186,33 +194,51 @@ export function buildAttacksList(attacks) {
     const details = document.createElement('div');
     details.className = 'monster-attack-details';
     const properties = [];
-    if (attack.attackType) properties.push(attack.attackType);
-    if (attack.reach) properties.push(`Reach ${attack.reach}`);
-    if (attack.targets) properties.push(`Targets ${attack.targets}`);
+    if (feature) {
+      if (feature.attackRoll?.type) properties.push(`${feature.attackRoll.type} attack`);
+      if (rangeText) properties.push(rangeText);
+      if (areaText) properties.push(areaText);
+      if (feature.target?.kind) properties.push(`Targets ${feature.target.kind}`);
+      if (saveText) properties.push(saveText);
+    } else {
+      if (attack.attackType) properties.push(attack.attackType);
+      if (attack.reach) properties.push(`Reach ${attack.reach}`);
+      if (attack.targets) properties.push(`Targets ${attack.targets}`);
+    }
     if (properties.length) {
       details.textContent = properties.join(' · ');
       item.appendChild(details);
     }
 
-    if (attack.toHit) {
+    if (feature ? attackBonus !== null : attack.toHit) {
       const roll = document.createElement('div');
       roll.className = 'monster-attack-roll';
-      roll.innerHTML = `<strong>${attack.toHit}</strong> to hit`;
+      roll.textContent = `${attackBonus !== null ? `${attackBonus >= 0 ? '+' : ''}${attackBonus}` : attack.toHit} to hit`;
       item.appendChild(roll);
     }
 
-    if (attack.damage) {
+    if (feature ? damageParts.length : attack.damage) {
       const damage = document.createElement('div');
       damage.className = 'monster-attack-damage';
-      const damageText = attack.damageType ? `${attack.damage} ${attack.damageType}` : attack.damage;
-      damage.innerHTML = `<strong>Damage:</strong> ${damageText}`;
+      const damageText = feature
+        ? damageParts.map(({ formula, damageType }) => `${formula}${damageType ? ` ${damageType}` : ''}`).join(' + ')
+        : attack.damageType ? `${attack.damage} ${attack.damageType}` : attack.damage;
+      damage.textContent = `Damage: ${damageText}`;
       item.appendChild(damage);
     }
 
-    if (attack.desc) {
+    if (feature && healingParts.length) {
+      const healing = document.createElement('div');
+      healing.className = 'monster-attack-damage';
+      healing.textContent = `Healing: ${healingParts.map(({ formula }) => formula).join(' + ')}`;
+      item.appendChild(healing);
+    }
+
+    const description = feature?.description || attack.desc;
+    if (description) {
       const desc = document.createElement('div');
       desc.className = 'monster-attack-details';
-      desc.textContent = attack.desc;
+      desc.textContent = description;
       item.appendChild(desc);
     }
 
@@ -254,15 +280,46 @@ export function buildFeatureList(entries) {
     const nameLine = document.createElement('div');
     nameLine.innerHTML = `<span class="monster-feature-name">${entry.name}</span>${tagHtml}`;
     item.appendChild(nameLine);
-    if (entry.desc) {
+    const description = entry.description || entry.desc;
+    if (description) {
       const desc = document.createElement('div');
       desc.className = 'monster-feature-desc';
-      desc.textContent = entry.desc;
+      desc.textContent = description;
       item.appendChild(desc);
+    }
+    const feature = entry.feature || entry;
+    const mechanics = [
+      feature.activation?.type && `Activation: ${feature.activation.type}`,
+      feature.range && `Range: ${feature.range.kind}${feature.range.distance !== null ? ` ${feature.range.distance} ${feature.range.unit || ''}` : ''}`,
+      feature.area && `Area: ${feature.area.size} ${feature.area.unit} ${feature.area.shape}`,
+      feature.target?.kind && `Target: ${feature.target.kind}${feature.target.count ? ` (${feature.target.count})` : ''}`,
+      feature.attackRoll?.type && `${feature.attackRoll.type} attack${Number.isFinite(feature.attackRoll.bonus) ? ` ${feature.attackRoll.bonus >= 0 ? '+' : ''}${feature.attackRoll.bonus}` : ''}`,
+      feature.save?.ability && `${feature.save.ability.toUpperCase()} save${feature.save.dcFormula?.kind === 'fixed' ? ` DC ${feature.save.dcFormula.value}` : ''}`,
+      feature.damage?.length && `Damage: ${feature.damage.map(({ formula, damageType }) => `${formula}${damageType ? ` ${damageType}` : ''}`).join(' + ')}`,
+      feature.healing?.length && `Healing: ${feature.healing.map(({ formula }) => formula).join(' + ')}`,
+      feature.conditionEffects?.length && `Conditions: ${feature.conditionEffects.map(({ condition }) => condition).join(', ')}`,
+      feature.duration && `Duration: ${feature.duration.value ?? ''} ${feature.duration.unit}`,
+      feature.concentration && 'Concentration',
+      feature.uses && `Uses: ${typeof feature.uses.maximum === 'number' ? feature.uses.maximum : feature.uses.maximum.formula} per ${feature.uses.period}`,
+    ].filter(Boolean);
+    if (mechanics.length) {
+      const mechanicsEl = document.createElement('div');
+      mechanicsEl.className = 'monster-attack-details';
+      mechanicsEl.textContent = mechanics.join(' · ');
+      item.appendChild(mechanicsEl);
     }
     wrap.appendChild(item);
   });
   return wrap;
+}
+
+function rollFeature(feature) {
+  const bonus = feature.attackRoll?.bonus;
+  if (Number.isFinite(bonus)) socketClient.emitEvent(EVENTS.ROLL_DICE, { count: 1, sides: 20, modifier: bonus });
+  for (const { formula } of feature.damage || []) {
+    const dice = parseDamageDice(formula);
+    if (dice) socketClient.emitEvent(EVENTS.ROLL_DICE, { count: dice.count, sides: dice.sides, modifier: dice.modifier });
+  }
 }
 
 function titleCase(str) {
@@ -334,9 +391,9 @@ export function buildFlatSpellList(spells) {
       level.textContent = [
         record.level === 0 ? 'Cantrip' : `Level ${record.level}`,
         record.school,
-        record.castingTime && `Casting time: ${record.castingTime}`,
-        record.range && `Range: ${record.range}`,
-        record.duration && `Duration: ${record.duration}${record.concentration ? ' (Concentration)' : ''}`,
+        record.feature.activation?.type && `Casting time: ${record.feature.activation.type}`,
+        record.feature.range && `Range: ${record.feature.range.kind}${record.feature.range.distance !== null ? ` ${record.feature.range.distance} ${record.feature.range.unit || ''}` : ''}`,
+        record.feature.duration && `Duration: ${record.feature.duration.value ?? ''} ${record.feature.duration.unit}${record.feature.concentration ? ' (Concentration)' : ''}`,
         record.ritual && 'Ritual',
         record.classes?.length && `Classes: ${record.classes.map((classEntry) => classEntry.name).join(', ')}`,
         record.components?.length && `Components: ${record.components.join(', ')}`,
@@ -344,17 +401,8 @@ export function buildFlatSpellList(spells) {
       ].filter(Boolean).join(' · ');
       row.appendChild(level);
 
-      const description = document.createElement('p');
-      description.className = 'local-rule-description';
-      description.textContent = record.description || 'No description is available.';
-      row.appendChild(description);
-
-      (record.effects || []).forEach((effect) => {
-        const effectEl = document.createElement('p');
-        effectEl.className = 'local-rule-effect';
-        effectEl.textContent = effect.name ? `${effect.name}: ${effect.description || ''}` : effect.description || '';
-        row.appendChild(effectEl);
-      });
+      const renderedFeature = buildFeatureList([record.feature]);
+      if (renderedFeature) row.appendChild(renderedFeature);
 
       const sources = (record.sources || []).map((source) => source.publication || source.title).filter(Boolean);
       if (sources.length) {

@@ -1,6 +1,5 @@
 import { computeCondition, Grid, MonsterInstance, Overlay, Token, TurnOrder, Validators } from '../shared/schema.js';
 import { EVENTS } from '../shared/protocol.js';
-import { db } from './db.js';
 import { monsterLibrary } from './monsterLibrary.js';
 import { PermissionPolicy } from './policy.js';
 
@@ -93,15 +92,15 @@ export class GameStateStore {
       if (token.combatantType === 'monster') {
         const monster = this.monsterInstances[token.combatantId];
         if (!monster) continue;
-        hp = monster.hp;
-        statusEffects = monster.statusEffects;
-        customStatusEffects = monster.customStatusEffects;
+        hp = { current: monster.state.hitPoints.current, max: monster.state.hitPoints.maximum };
+        statusEffects = monster.state.conditions.map(({ id }) => id);
+        customStatusEffects = monster.state.customConditions;
       } else {
         const character = this.db.findCharacter(token.owner, token.combatantId);
         if (!character) continue;
-        hp = character.hp;
-        statusEffects = character.statusEffects;
-        customStatusEffects = character.customStatusEffects;
+        hp = { current: character.state.hitPoints.current, max: character.state.hitPoints.maximum };
+        statusEffects = character.state.conditions.map(({ id }) => id);
+        customStatusEffects = character.state.customConditions;
       }
       statuses[token.combatantId] = {
         combatantId: token.combatantId,
@@ -180,8 +179,7 @@ export class GameStateStore {
     const template = monsterLibrary.getTemplate(templateId);
     if (!template) return null;
     const id = 'moninst_' + this.nextMonsterInstanceId++;
-    const instance = MonsterInstance.fromTemplate(template);
-    instance.id = id;
+    const instance = MonsterInstance.fromTemplate(template, id);
     this.monsterInstances[id] = instance;
     this.#persist();
     return instance;
@@ -189,6 +187,11 @@ export class GameStateStore {
 
   getMonsterInstance(id) {
     return this.monsterInstances[id];
+  }
+
+  getMonsterTemplateName(instanceId) {
+    const instance = this.monsterInstances[instanceId];
+    return instance ? monsterLibrary.getTemplate(instance.templateId)?.name ?? null : null;
   }
 
   /** Partial hp/statusEffects update — the DM sidebar's only two monster-instance controls. */
@@ -254,4 +257,3 @@ export class GameStateStore {
   }
 }
 
-export const gameState = new GameStateStore(db);

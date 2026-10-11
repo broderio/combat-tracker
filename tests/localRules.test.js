@@ -11,7 +11,7 @@ test('local rules expose a manifest, bounded catalog search, and stable spell re
   assert.equal(localRules.manifest.edition, '2024');
   const results = options.searchSpells({ name: 'fireball', limit: 5 });
   assert.ok(results.some((spell) => spell.id === 'fireball'));
-  assert.equal(localRules.getRecordById('spells', 'fireball').description.includes('8d6'), true);
+  assert.equal(localRules.getRecordById('spells', 'fireball').feature.description.includes('8d6'), true);
   assert.equal(options.searchSpells({ name: 'not-a-local-spell' }).length, 0);
 });
 
@@ -30,7 +30,8 @@ test('local monster templates use stable catalog IDs and normalized stat fields'
   assert.equal(Number.isFinite(summary.hitPoints), true);
   const template = monsterLibrary.getTemplate('adult-red-dragon');
   assert.equal(template.id, 'adult-red-dragon');
-  assert.equal(template.hpMax, 256);
-  assert.ok(template.attacks.some((action) => action.name === 'Rend'));
-  assert.ok(template.spellcasting.innate['At will'].includes('Scorching Ray'));
+  assert.equal(template.hitPoints.average, 256);
+  assert.ok(template.abilities.actions.some(({ name }) => name === 'Rend'));
+  const spellcasting = template.abilities.actions.find(({ name }) => name === 'Spellcasting')?.feature.spellcasting;
+  assert.ok(spellcasting.spellsByFrequency.some(({ spellIds }) => spellIds.includes('scorching-ray')));
 });

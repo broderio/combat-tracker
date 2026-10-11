@@ -1,17 +1,18 @@
 import { buildQuickEditControls as sharedBuildQuickEditControls } from './quickEditControls.js';
 import {
-  buildAttacksList,
   buildFeatureList,
   buildFlatSpellList,
   buildAbilityScoreGrid,
   computeModifiers,
   buildSpellSlotsRow,
+  buildAttacksList,
   buildSheetCard,
 } from './sheetCardView.js';
 
 import { ApiClient } from '../api.js';
 import { clientState } from '../state.js';
 import { rulesRepository } from '../rulesRepository.js';
+import { calculateCharacterDerivedValues, deriveWeaponAttack } from '/shared/characterBuild.js';
 
 import { openCharacterModal } from './characterModalView.js';
 
@@ -37,19 +38,18 @@ function appendRuleText(parent, label, text) {
 function buildCharacterRuleDetails(character) {
   const container = document.createElement('div');
   container.className = 'local-rule-records';
-  const selections = character.ruleSelections || {};
   const requests = [];
-  if (selections.classId) requests.push(['Class', rulesRepository.getClass(selections.classId)]);
-  if (selections.subclassId && selections.classId) {
-    requests.push(['Subclass', rulesRepository.getSubclass(selections.classId, selections.subclassId)]);
-  }
-  if (selections.speciesId) requests.push(['Species', rulesRepository.getCatalogRecord('species', selections.speciesId)]);
-  if (selections.backgroundId) requests.push(['Background', rulesRepository.getCatalogRecord('backgrounds', selections.backgroundId)]);
-  (selections.featIds || []).forEach((id) => requests.push(['Feat', rulesRepository.getCatalogRecord('feats', id)]));
+  character.classes.forEach(({ classId, classLevel, subclassId }) => {
+    requests.push(['Class', rulesRepository.getClass(classId), classLevel]);
+    if (subclassId) requests.push(['Subclass', rulesRepository.getSubclass(classId, subclassId), classLevel]);
+  });
+  if (character.speciesId) requests.push(['Species', rulesRepository.getCatalogRecord('species', character.speciesId)]);
+  if (character.backgroundId) requests.push(['Background', rulesRepository.getCatalogRecord('backgrounds', character.backgroundId)]);
+  character.featIds.forEach((id) => requests.push(['Feat', rulesRepository.getCatalogRecord('feats', id)]));
   if (!requests.length) return null;
 
-  Promise.all(requests.map(async ([kind, request]) => [kind, await request])).then((records) => {
-    records.forEach(([kind, record]) => {
+  Promise.all(requests.map(async ([kind, request, level]) => [kind, await request, level])).then((records) => {
+    records.forEach(([kind, record, level]) => {
       const section = document.createElement('article');
       section.className = 'local-rule-record';
       const heading = document.createElement('h4');
@@ -68,33 +68,221 @@ function buildCharacterRuleDetails(character) {
           appendRuleText(section, 'Primary ability', record.primaryAbility?.abilities?.join(' or '));
           appendRuleText(section, 'Saving throws', record.savingThrows?.join(', '));
           appendRuleText(section, 'Armor', record.proficiencies?.armor?.raw);
-          appendRuleText(section, 'Weapons', record.proficiencies?.weapons?.raw);
+          appendRuleText(section, 'Weapons', record.proficiencies?.weapons?.categories?.join(', '));
           appendRuleText(section, 'Skills', record.proficiencies?.skills?.raw);
         }
-        const currentLevel = Number(character.level) || 1;
-        Object.entries(record.featuresByLevel || {}).filter(([level]) => Number(level) <= currentLevel).forEach(([level, features]) => {
-          (features || []).forEach((feature) => appendRuleText(section, `${feature.name} (Level ${level})`, feature.description));
-        });
+        const features = Object.entries(record.featuresByLevel || {})
+          .filter(([featureLevel]) => Number(featureLevel) <= level)
+          .flatMap(([featureLevel, entries]) => entries.map((feature) => ({ ...feature, tag: `Level ${featureLevel}` })));
+        const renderedFeatures = buildFeatureList(features);
+        if (renderedFeatures) section.appendChild(renderedFeatures);
       } else if (kind === 'Species') {
         appendRuleText(section, 'Creature type', record.creatureType);
         appendRuleText(section, 'Size', record.size);
-        appendRuleText(section, 'Speed', record.speed?.raw);
-        (record.traits || []).forEach((trait) => appendRuleText(section, trait.name, trait.description));
+        appendRuleText(section, 'Walking speed', record.speed?.walkingFeet === null ? null : `${record.speed?.walkingFeet} ft.`);
+        const renderedTraits = buildFeatureList(record.traits);
+        if (renderedTraits) section.appendChild(renderedTraits);
       } else if (kind === 'Background') {
         appendRuleText(section, 'Ability score options', record.abilityScores?.map((score) => score.name).join(', '));
         appendRuleText(section, 'Granted feat', record.feat?.name);
         appendRuleText(section, 'Skill proficiencies', record.skillProficiencies?.map((skill) => skill.name).join(', '));
         appendRuleText(section, 'Tool proficiency', record.toolProficiency);
-        appendRuleText(section, 'Equipment', record.equipment?.raw);
+        appendRuleText(section, 'Equipment options', record.equipment?.options?.map(({ label }) => label).join('; '));
       } else if (kind === 'Feat') {
-        appendRuleText(section, 'Prerequisite', record.prerequisites?.raw || record.prerequisites);
-        appendRuleText(section, 'Benefits', Array.isArray(record.benefits) ? record.benefits.map((benefit) => benefit.description || benefit.name).filter(Boolean).join('\n') : null);
+        appendRuleText(section, 'Prerequisite', record.prerequisites);
+        const renderedBenefits = buildFeatureList(record.benefits);
+        if (renderedBenefits) section.appendChild(renderedBenefits);
       }
       const sourceNames = [...new Set((record.sources || []).map((source) => source.publication || source.title).filter(Boolean))];
       appendRuleText(section, 'Source', sourceNames.join(', '));
       container.appendChild(section);
     });
   }).catch(() => appendRuleText(container, null, 'Some local rule details could not be loaded.'));
+  return container;
+}
+
+function buildEquipmentList(equipment) {
+  if (!equipment?.length) return null;
+  const list = document.createElement('div');
+  list.className = 'monster-attacks-list';
+  equipment.forEach(({ equipmentId, quantity, equipped }) => {
+    const item = document.createElement('article');
+    item.className = 'monster-attack';
+    const name = document.createElement('div');
+    name.className = 'monster-attack-name';
+    name.textContent = equipmentId;
+    item.appendChild(name);
+    rulesRepository.getCatalogRecord('equipment', equipmentId).then((record) => {
+      if (!record || !item.isConnected) return;
+      name.textContent = `${record.name}${quantity > 1 ? ` ×${quantity}` : ''}${equipped ? '' : ' (stowed)'}`;
+      const details = document.createElement('div');
+      details.className = 'monster-attack-details';
+      details.textContent = [record.damage?.dice && `${record.damage.dice.count}d${record.damage.dice.sides}${record.damage.flat ? `+${record.damage.flat}` : ''} ${record.damage.damageType || ''}`.trim(),
+        record.weaponProperties?.map(({ name: property }) => property).join(', '), record.mastery].filter(Boolean).join(' · ');
+      if (details.textContent) item.appendChild(details);
+    }).catch(() => {});
+    list.appendChild(item);
+  });
+  return list;
+}
+
+function buildCharacterSpellSlots(character, username, readOnly) {
+  if (!character.classes?.length) return null;
+  const row = document.createElement('div');
+  Promise.all(character.classes.map(async ({ classId, subclassId }) => [
+    classId,
+    {
+      classRecord: await rulesRepository.getClass(classId),
+      subclassRecord: subclassId ? await rulesRepository.getSubclass(classId, subclassId) : null,
+    },
+  ])).then(async (entries) => {
+    if (!row.isConnected) return;
+    const contexts = new Map(entries);
+    const totalLevel = character.classes.reduce((total, selection) => total + selection.classLevel, 0);
+    const multiclassSlotTable = await rulesRepository.getMulticlassSpellSlotTable();
+    const derived = calculateCharacterDerivedValues({
+      level: totalLevel,
+      abilityScores: character.abilityScores,
+      build: { classes: character.classes },
+      classRecords: contexts,
+      multiclassSlotTable,
+    });
+    const progression = derived.spellSlots.status === 'calculated' ? derived.spellSlots.byLevel : null;
+    if (!progression || !row.isConnected) return;
+    const slots = Object.fromEntries(Object.entries(progression).map(([level, maximum]) => [level, {
+      maximum,
+      expended: Math.min(maximum, character.state.spellSlots?.[level]?.expended || 0),
+    }]));
+    const rendered = buildSpellSlotsRow(slots, readOnly ? null : (level, expended) => {
+      ApiClient.updateCharacter(username || clientState.currentUsername, character.id, {
+        state: { spellSlots: { [level]: { expended } } },
+      });
+    });
+    if (rendered) row.replaceWith(rendered);
+  }).catch(() => {});
+  return row;
+}
+
+function buildCharacterWeaponAttacks(character) {
+  const container = document.createElement('div');
+  Promise.all([
+    Promise.all(character.equipment.filter(({ equipped }) => equipped).map(async ({ equipmentId }) => rulesRepository.getCatalogRecord('equipment', equipmentId))),
+    Promise.all(character.classes.map(async ({ classId, subclassId }) => {
+      const classRecord = await rulesRepository.getClass(classId);
+      const subclassRecord = subclassId ? await rulesRepository.getSubclass(classId, subclassId) : null;
+      return [classRecord, subclassRecord];
+    })),
+  ]).then(([weapons, classRecordPairs]) => {
+    if (!container.isConnected) return;
+    const classRecords = classRecordPairs.flat().filter(Boolean);
+    const attacks = weapons.filter(Boolean).map((weapon) => deriveWeaponAttack(character, weapon, classRecords)).filter(Boolean);
+    const list = buildAttacksList(attacks);
+    if (list) container.appendChild(list);
+    else container.textContent = 'No equipped canonical weapons are available.';
+  }).catch(() => {
+    if (container.isConnected) container.textContent = 'Weapon attacks could not be derived from local rules.';
+  });
+  return container;
+}
+
+function buildCharacterCombatState(character, username, readOnly) {
+  const container = document.createElement('div');
+  container.className = 'character-combat-state';
+  const turn = character.state.turn || {};
+  const turnRow = document.createElement('div');
+  turnRow.className = 'cf-entry-list';
+  for (const [key, label] of [['action', 'Action'], ['bonusAction', 'Bonus Action'], ['reaction', 'Reaction']]) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'secondary-btn';
+    button.textContent = `${label}: ${turn[key] === false ? 'spent' : 'available'}`;
+    button.disabled = readOnly;
+    button.addEventListener('click', () => ApiClient.updateCharacter(username || clientState.currentUsername, character.id, {
+      state: { turn: { [key]: turn[key] === false } },
+    }));
+    turnRow.appendChild(button);
+  }
+  container.appendChild(turnRow);
+
+  const conditions = document.createElement('div');
+  conditions.className = 'cf-entry-list';
+  character.state.conditions.forEach(({ id, sourceId, duration }) => {
+    const item = document.createElement('p');
+    item.className = 'monster-attack-details';
+    const extra = [sourceId && `source ${sourceId}`, duration && JSON.stringify(duration)].filter(Boolean).join(' · ');
+    item.textContent = `${id}${extra ? ` — ${extra}` : ''}`;
+    conditions.appendChild(item);
+  });
+  if (conditions.childElementCount) container.appendChild(conditions);
+
+  const resources = document.createElement('div');
+  resources.className = 'cf-entry-list';
+  const featureNames = new Map();
+  Promise.all(character.classes.map(async ({ classId, subclassId }) => [
+    await rulesRepository.getClass(classId),
+    subclassId ? await rulesRepository.getSubclass(classId, subclassId) : null,
+  ])).then((recordPairs) => {
+    recordPairs.flat().filter(Boolean).forEach((record) => {
+      for (const features of Object.values(record.featuresByLevel || {})) for (const feature of features) featureNames.set(feature.id, feature.name);
+    });
+    if (!resources.isConnected) return;
+    resources.replaceChildren();
+    character.state.resources.forEach(({ id, remaining }, index) => {
+      const row = document.createElement('div');
+      row.className = 'cf-entry-row';
+      const name = document.createElement('span');
+      name.textContent = `${featureNames.get(id) || id}: ${remaining} remaining`;
+      row.appendChild(name);
+      if (!readOnly) for (const [label, delta] of [['−', -1], ['+', 1]]) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'secondary-btn';
+        button.textContent = label;
+        button.setAttribute('aria-label', `${delta < 0 ? 'Spend' : 'Restore'} ${featureNames.get(id) || id}`);
+        button.disabled = delta < 0 ? remaining <= 0 : false;
+        button.addEventListener('click', () => {
+          const next = character.state.resources.map((resource, resourceIndex) => resourceIndex === index
+            ? { ...resource, remaining: Math.max(0, resource.remaining + delta) } : resource);
+          ApiClient.updateCharacter(username || clientState.currentUsername, character.id, { state: { resources: next } });
+        });
+        row.appendChild(button);
+      }
+      resources.appendChild(row);
+    });
+  }).catch(() => {});
+  if (character.state.resources.length) container.appendChild(resources);
+
+  const concentration = character.state.concentration;
+  const focus = document.createElement('div');
+  focus.className = 'cf-entry-row';
+  const focusText = document.createElement('span');
+  focusText.textContent = concentration ? `Concentrating on ${concentration.spellId}${concentration.targetIds.length ? ` · targets ${concentration.targetIds.join(', ')}` : ''}` : 'No active concentration';
+  focus.appendChild(focusText);
+  if (!readOnly) {
+    const spellSelect = document.createElement('select');
+    spellSelect.setAttribute('aria-label', 'Concentration spell');
+    spellSelect.add(new Option('No concentration', ''));
+    character.spellIds.forEach((spellId) => spellSelect.add(new Option(spellId, spellId)));
+    spellSelect.value = concentration?.spellId || '';
+    const targets = document.createElement('input');
+    targets.type = 'text';
+    targets.placeholder = 'Target IDs (comma-separated)';
+    targets.setAttribute('aria-label', 'Concentration target IDs');
+    targets.value = concentration?.targetIds.join(', ') || '';
+    const save = document.createElement('button');
+    save.type = 'button';
+    save.className = 'secondary-btn';
+    save.textContent = 'Set';
+    save.addEventListener('click', () => {
+      const spellId = spellSelect.value;
+      const targetIds = targets.value.split(',').map((id) => id.trim()).filter(Boolean);
+      ApiClient.updateCharacter(username || clientState.currentUsername, character.id, {
+        state: { concentration: spellId ? { spellId, targetIds } : null },
+      });
+    });
+    focus.append(spellSelect, targets, save);
+  }
+  container.appendChild(focus);
   return container;
 }
 
@@ -111,25 +299,17 @@ function buildCharacterCard(character, { showEditButton, showQuickEdit, username
   // spendable both on the player's own sheet and from the DM roster — unlike HP quick-edit,
   // which is DM-only. Read-only cards (other players' simplified stat blocks) get no callback.
   const slotOwner = username || clientState.currentUsername;
-  const spellSlotsEl = buildSpellSlotsRow(
-    character.spellSlots,
-    readOnly
-      ? null
-      : (level, nextCurrent) => {
-          ApiClient.updateCharacter(slotOwner, character.id, { spellSlots: { [level]: nextCurrent } });
-        }
-  );
+  const spellSlotsEl = buildCharacterSpellSlots(character, slotOwner, readOnly);
 
     const card = buildSheetCard({
     name: character.name,
-      meta: readOnly ? null : `Level ${character.level} ${character.race ? character.race + ' ' : ''}${character.class || ''}`,
+      meta: readOnly ? null : `${character.classes.reduce((total, selection) => total + selection.classLevel, 0) || 0} · ${character.classes.map(({ classId, classLevel }) => `${classId} ${classLevel}`).join(' / ') || 'No class'}${character.speciesId ? ` · ${character.speciesId}` : ''}`,
     stats: readOnly
       ? []
       : [
-          ['AC', character.ac],
-          ['HP', `${character.hp.current}/${character.hp.max}`],
+          ['HP', `${character.state.hitPoints.current}/${character.state.hitPoints.maximum}`],
         ],
-    hp: character.hp,
+    hp: { current: character.state.hitPoints.current, max: character.state.hitPoints.maximum },
     spellSlotsEl,
     topAbilitiesEl: buildAbilityScoreGrid(character.abilityScores, computeModifiers(character.abilityScores)),
     notes: readOnly ? null : character.notes,
@@ -139,9 +319,11 @@ function buildCharacterCard(character, { showEditButton, showQuickEdit, username
       ? []
       : [
           { title: 'Character Options', contentEl: buildCharacterRuleDetails(character) },
-          { title: 'Attacks', contentEl: buildAttacksList(character.attacks), count: character.attacks?.length },
-          { title: 'Features', contentEl: buildFeatureList(character.features), count: character.features?.length },
-          { title: 'Spells', contentEl: buildFlatSpellList(character.spells), count: character.spells?.length },
+          { title: 'Combat Resources', contentEl: buildCharacterCombatState(character, slotOwner, false) },
+          { title: 'Weapon Attacks', contentEl: buildCharacterWeaponAttacks(character) },
+          { title: 'Equipment', contentEl: buildEquipmentList(character.equipment), count: character.equipment.length },
+          { title: 'Features', contentEl: buildFeatureList(character.customFeatures), count: character.customFeatures.length },
+          { title: 'Spells', contentEl: buildFlatSpellList(character.spellIds.map((id) => ({ id }))), count: character.spellIds.length },
         ],
   });
 
@@ -149,33 +331,35 @@ function buildCharacterCard(character, { showEditButton, showQuickEdit, username
 }
 
 function buildQuickEditControls(username, character) {
-  return sharedBuildQuickEditControls(character.hp, character.statusEffects, character.customStatusEffects, {
+  const state = character.state;
+  const activeConditions = state.conditions.map(({ id }) => id);
+  return sharedBuildQuickEditControls({ current: state.hitPoints.current, max: state.hitPoints.maximum }, activeConditions, state.customConditions, {
     onAdjustHp: (delta) => {
-      const next = Math.max(-9999, Math.min(9999, character.hp.current + delta));
-      ApiClient.updateCharacter(username, character.id, { hp: { current: next } });
+      const next = Math.max(0, Math.min(9999, state.hitPoints.current + delta));
+      ApiClient.updateCharacter(username, character.id, { state: { hitPoints: { current: next } } });
     },
     onSetCurrentHp: (current) => {
-      ApiClient.updateCharacter(username, character.id, { hp: { current } });
+      ApiClient.updateCharacter(username, character.id, { state: { hitPoints: { current } } });
     },
     onSetMaxHp: (max) => {
-      ApiClient.updateCharacter(username, character.id, { hp: { max } });
+      ApiClient.updateCharacter(username, character.id, { state: { hitPoints: { maximum: max } } });
     },
     onToggleEffect: (effect, checked) => {
-      const current = new Set(character.statusEffects || []);
-      if (checked) current.add(effect);
+      const current = new Map(state.conditions.map((condition) => [condition.id, condition]));
+      if (checked) current.set(effect, { id: effect, sourceId: null, duration: null });
       else current.delete(effect);
-      ApiClient.updateCharacter(username, character.id, { statusEffects: Array.from(current) });
+      ApiClient.updateCharacter(username, character.id, { state: { conditions: [...current.values()] } });
     },
     onAddCustomEffect: (label, color) => {
-      const existingKeys = new Set((character.customStatusEffects || []).map((e) => e.key));
+      const existingKeys = new Set((state.customConditions || []).map((e) => e.key));
       let key = 'custom-' + label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-+|-+$)/g, '');
       let n = 2;
       while (existingKeys.has(key)) key = `${key}-${n++}`;
-      const nextCustom = [...(character.customStatusEffects || []), { key, label, color }];
-      const nextEffects = [...(character.statusEffects || []), key];
       ApiClient.updateCharacter(username, character.id, {
-        customStatusEffects: nextCustom,
-        statusEffects: nextEffects,
+        state: {
+          customConditions: [...(state.customConditions || []), { key, label, color }],
+          conditions: [...state.conditions, { id: key, sourceId: null, duration: null }],
+        },
       });
     },
   });

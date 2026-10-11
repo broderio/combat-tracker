@@ -69,10 +69,11 @@ export class RosterStore {
       .map((entry) => ({
         username: entry.username,
         character: {
+          schemaVersion: entry.character.schemaVersion,
+          kind: entry.character.kind,
           name: entry.character.name,
-          hp: entry.character.hp,
+          state: { hitPoints: entry.character.state.hitPoints, spellSlots: entry.character.state.spellSlots },
           abilityScores: entry.character.abilityScores,
-          spellSlots: entry.character.spellSlots,
         },
       }));
     io.emit(EVENTS.PUBLIC_CHARACTERS, list);

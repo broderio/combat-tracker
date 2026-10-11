@@ -1,0 +1,10 @@
+{
+  "monsters": {
+    "Acolyte": "priest-acolyte",
+    "Sahuagin": "sahuagin-warrior"
+  },
+  "weapons": {
+    "Shortsword +1": "shortsword",
+    "Staff": "quarterstaff"
+  }
+}

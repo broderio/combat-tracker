@@ -46,6 +46,12 @@ export class LocalRules {
     return entry ? this.getRecord(entry.path) : null;
   }
 
+  getSubclass(classId, subclassId) {
+    const classEntry = this.manifest.classes.find((item) => item.id === classId);
+    const subclassEntry = classEntry?.subclasses?.find((item) => item.id === subclassId);
+    return subclassEntry ? this.getRecord(subclassEntry.path) : null;
+  }
+
   getRecordById(catalogId, recordId) {
     const entry = this.getCatalog(catalogId).find((item) => item.id === recordId);
     return entry ? this.getRecord(entry.path) : null;

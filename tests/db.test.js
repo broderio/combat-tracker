@@ -42,22 +42,23 @@ test('sanitizeCharacter assigns a new id for brand-new characters and keeps exis
 test('sanitizeCharacter enforces local rules as the authority for linked selections', () => {
   const database = makeTempDb();
   const character = database.sanitizeCharacter({
-    class: 'Unlisted Class',
-    race: 'Unlisted Species',
-    ruleSelections: {
-      classId: 'unknown-class',
-      speciesId: 'unknown-species',
-      backgroundId: 'criminal',
-      featIds: ['alert', 'unknown-feat'],
-    },
-    spells: [{ id: 'fireball' }, { id: 'unknown-spell' }],
+    classes: [{ classId: 'unknown-class', classLevel: 4, subclassId: null }],
+    speciesId: 'unknown-species',
+    backgroundId: 'criminal',
+    featIds: ['alert', 'unknown-feat'],
+    spellIds: ['fireball', 'unknown-spell'],
+    equipment: [{ equipmentId: 'longsword', quantity: 1, equipped: true }, { equipmentId: 'unknown-weapon', quantity: 1, equipped: true }],
+    attacks: [{ name: 'copied legacy attack', damage: '1d8' }],
+    build: { copied: true },
   }, null);
-  assert.equal(character.class, '');
-  assert.equal(character.race, '');
-  assert.equal(character.ruleSelections.classId, null);
-  assert.equal(character.ruleSelections.backgroundId, 'criminal');
-  assert.deepEqual(character.ruleSelections.featIds, ['alert']);
-  assert.deepEqual(character.spells, [{ id: 'fireball' }]);
+  assert.deepEqual(character.classes, []);
+  assert.equal(character.speciesId, null);
+  assert.equal(character.backgroundId, 'criminal');
+  assert.deepEqual(character.featIds, ['alert']);
+  assert.deepEqual(character.spellIds, ['fireball']);
+  assert.deepEqual(character.equipment, [{ equipmentId: 'longsword', quantity: 1, equipped: true }]);
+  assert.equal(Object.hasOwn(character, 'attacks'), false);
+  assert.equal(Object.hasOwn(character, 'build'), false);
 });
 
 test('findCharacter returns null for unknown username or character id', () => {
@@ -65,11 +66,21 @@ test('findCharacter returns null for unknown username or character id', () => {
   assert.equal(database.findCharacter('nobody', 'char_1'), null);
 
   const db = database.loadDB();
-  db.users['bob'] = { username: 'bob', pin: '0', characters: [{ id: 'char_1', name: 'Bob Hero' }] };
+  const character = database.sanitizeCharacter({ name: 'Bob Hero' }, null).toJSON();
+  character.id = 'char_1';
+  db.users['bob'] = { username: 'bob', pin: '0', characters: [character] };
   database.saveDB(db);
 
   assert.equal(database.findCharacter('bob', 'wrong-id'), null);
   assert.equal(database.findCharacter('BOB', 'char_1').name, 'Bob Hero'); // username lookup is case-insensitive
+});
+
+test('loadDB rejects legacy saved Characters without rewriting the database', () => {
+  const database = makeTempDb();
+  fs.writeFileSync(database.dbPath, JSON.stringify({ users: { bob: { characters: [{ id: 'char_1', name: 'Legacy' }] } }, encounters: [] }));
+  const original = fs.readFileSync(database.dbPath, 'utf8');
+  assert.throws(() => database.loadDB(), /not schema v6.*migrateRulesDatabase\.js/s);
+  assert.equal(fs.readFileSync(database.dbPath, 'utf8'), original);
 });
 
 test('createEncounter/getEncounter/updateEncounter/deleteEncounter manage the encounters list', () => {

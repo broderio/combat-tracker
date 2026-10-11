@@ -109,6 +109,30 @@
   border-radius: 6px;
   background: var(--wood);
 }
+.cf-class-entry {
+  display: grid;
+  grid-template-columns: minmax(110px, 1fr) minmax(110px, 1fr) 72px auto;
+  gap: 6px;
+  align-items: center;
+}
+.cf-class-entry select,
+.cf-class-entry input,
+.cf-recommendation-group select {
+  min-width: 0;
+  padding: 7px;
+  color: var(--parchment);
+  background: var(--wood);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  font: inherit;
+}
+.cf-recommendation-group select[multiple] {
+  width: 100%;
+  min-height: 76px;
+}
+.cf-class-entry .cf-entry-remove-btn {
+  white-space: nowrap;
+}
 .cf-recommendation-group h4 {
   margin: 0 0 6px;
   color: var(--parchment);

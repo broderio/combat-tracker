@@ -12,7 +12,7 @@ import { CharacterOptionsController } from './server/routes/characterOptions.js'
 import { EncountersController } from './server/routes/encounters.js';
 import { registerSocketHandlers } from './server/socketHandlers/index.js';
 import { db } from './server/db.js';
-import { gameState } from './server/gameState.js';
+import { GameStateStore } from './server/gameState.js';
 import { rosterStore } from './server/rosterStore.js';
 
 // ESM has no built-in `__dirname` — this is the standard way to recover it.
@@ -23,6 +23,7 @@ const server = http.createServer(app);
 const io = new Server(server);
 
 const PORT = process.env.PORT || 3000;
+const gameState = new GameStateStore(db);
 const UPLOAD_DIR = path.join(__dirname, 'public', 'uploads');
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
@@ -49,7 +50,7 @@ app.use('/api', new EncountersController(io, db, gameState).router);
 app.use(new BackgroundController(io, gameState, UPLOAD_DIR).router);
 
 // ================= Socket.io realtime layer =================
-registerSocketHandlers(io);
+registerSocketHandlers(io, db, gameState);
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`DnD Combat Tracker running:`);

@@ -1,4 +1,5 @@
 export const ABILITY_KEYS = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
+export const RULES_SCHEMA_VERSION = 6;
 
 // Spell slots are tracked per character level 1-9 (cantrips don't consume
 // slots, so there's no level 0 here). Shared by Character and
@@ -13,11 +14,8 @@ export const CHARACTER_FIELDS = [
     maxLength: 60,
     default: 'New Character',
     emptyFallback: 'Unnamed',
+    emptyFallback: 'Unnamed',
   },
-  { key: 'class', kind: 'text', label: 'Class', maxLength: 40, default: '' },
-  { key: 'race', kind: 'text', label: 'Race', maxLength: 40, default: '' },
-  { key: 'level', kind: 'int', label: 'Level', min: 1, max: 20, default: 1 },
-  { key: 'ac', kind: 'int', label: 'Armor Class', min: 0, max: 40, default: 10 },
   { key: 'notes', kind: 'text', label: 'Notes', maxLength: 2000, default: '' },
   {
     key: 'tokenColor',
@@ -26,11 +24,6 @@ export const CHARACTER_FIELDS = [
     maxLength: 7,
     default: '#e63946',
   },
-];
-
-export const HP_FIELDS = [
-  { key: 'current', label: 'HP (current)', min: -9999, max: 9999, default: 10 },
-  { key: 'max', label: 'HP (max)', min: 0, max: 9999, default: 10 },
 ];
 
 export const GRID_FIELDS = [
@@ -202,56 +195,14 @@ function sanitizeStringField(value, maxLength) {
   return String(value).trim().slice(0, maxLength);
 }
 
-// Rule-backed selections store local database IDs; combat values that are
-// manually entered remain character-owned state.
-function sanitizeAttack(a) {
-  if (!a || typeof a !== 'object') return null;
-  const name = sanitizeStringField(a.name, 60);
-  if (!name) return null;
-  return {
-    name,
-    equipmentId: sanitizeStringField(a.equipmentId, 100) || null,
-    equipmentName: sanitizeStringField(a.equipmentName, 80) || null,
-    toHit: sanitizeStringField(a.toHit, 20) || null,
-    damage: sanitizeStringField(a.damage, 40) || null,
-    damageType: sanitizeStringField(a.damageType, 30) || null,
-    desc: sanitizeStringField(a.desc, 500),
-  };
-}
-
-function sanitizeFeature(f) {
-  if (!f || typeof f !== 'object') return null;
-  const name = sanitizeStringField(f.name, 60);
-  if (!name) return null;
-  return { name, desc: sanitizeStringField(f.desc, 1000) };
-}
-
-function sanitizeSpell(s) {
-  if (!s || typeof s !== 'object') return null;
-  const id = sanitizeStringField(s.id, 100).toLowerCase();
-  return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id) ? { id } : null;
-}
-
 function sanitizeId(value) {
   const id = sanitizeStringField(value, 100).toLowerCase();
   return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id) ? id : null;
 }
 
-function sanitizeRuleSelections(value, existing = {}) {
-  const input = value && typeof value === 'object' ? value : {};
-  const prior = existing && typeof existing === 'object' ? existing : {};
-  const featIds = input.featIds === undefined ? prior.featIds : input.featIds;
-  return {
-    classId: input.classId === undefined ? sanitizeId(prior.classId) : sanitizeId(input.classId),
-    subclassId: input.subclassId === undefined ? sanitizeId(prior.subclassId) : sanitizeId(input.subclassId),
-    speciesId: input.speciesId === undefined ? sanitizeId(prior.speciesId) : sanitizeId(input.speciesId),
-    backgroundId: input.backgroundId === undefined ? sanitizeId(prior.backgroundId) : sanitizeId(input.backgroundId),
-    featIds: Array.isArray(featIds) ? [...new Set(featIds.map(sanitizeId).filter(Boolean))].slice(0, 40) : [],
-    ruleset: {
-      edition: '2024',
-      databaseSchemaVersion: 4,
-    },
-  };
+function sanitizeEntityId(value) {
+  const id = sanitizeStringField(value, 100);
+  return /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(id) ? id : null;
 }
 
 function cloneBoundedJson(value, depth = 0) {
@@ -266,45 +217,6 @@ function cloneBoundedJson(value, depth = 0) {
     );
   }
   return null;
-}
-
-function defaultSpellSlots() {
-  const slots = {};
-  for (const level of SPELL_LEVELS) slots[level] = { max: 0, current: 0 };
-  return slots;
-}
-
-function cloneSpellSlots(existing) {
-  const slots = {};
-  for (const level of SPELL_LEVELS) {
-    const e = existing && existing[level];
-    slots[level] = { max: e?.max || 0, current: e?.current || 0 };
-  }
-  return slots;
-}
-
-/** Editing the max slots per level (character modal). Raising max grants the extra slot(s) as
- * available (so a brand-new character or one that just leveled up starts with full slots);
- * lowering max clamps current down so it never exceeds the new cap. */
-function applySpellSlotMax(slots, maxInput) {
-  if (!maxInput || typeof maxInput !== 'object') return;
-  for (const level of SPELL_LEVELS) {
-    if (maxInput[level] === undefined) continue;
-    const oldMax = slots[level].max;
-    const newMax = Validators.clampInt(maxInput[level], 0, 99, oldMax);
-    slots[level].current =
-      newMax > oldMax ? Math.min(newMax, slots[level].current + (newMax - oldMax)) : Math.min(slots[level].current, newMax);
-    slots[level].max = newMax;
-  }
-}
-
-/** Spending/restoring slots (quick-edit) — clamped to [0, max] for that level. */
-function applySpellSlotCurrent(slots, currentInput) {
-  if (!currentInput || typeof currentInput !== 'object') return;
-  for (const level of SPELL_LEVELS) {
-    if (currentInput[level] === undefined) continue;
-    slots[level].current = Validators.clampInt(currentInput[level], 0, slots[level].max, slots[level].current);
-  }
 }
 
 function slugify(label) {
@@ -334,51 +246,36 @@ function sanitizeCustomStatusEffect(e) {
   return { key, label, color };
 }
 
-export class HitPoints {
-  constructor(current, max) {
-    this.current = current;
-    this.max = max;
-  }
-
-  /** A brand-new `{ current, max }` at schema defaults. */
-  static default() {
-    const defaults = {};
-    for (const field of HP_FIELDS) defaults[field.key] = field.default;
-    return new HitPoints(defaults.current, defaults.max);
-  }
-
-  static clone(existing) {
-    return new HitPoints(existing.current, existing.max);
-  }
-
-  static fromInput(input, existing) {
-    const hp = existing ? HitPoints.clone(existing) : HitPoints.default();
-    for (const field of HP_FIELDS) {
-      if (input[field.key] !== undefined) {
-        hp[field.key] = Validators.clampInt(input[field.key], field.min, field.max, hp[field.key]);
-      }
-    }
-    return hp;
-  }
-
-  toJSON() {
-    return { current: this.current, max: this.max };
-  }
+function sanitizeConcentration(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const spellId = sanitizeId(value.spellId);
+  if (!spellId) return null;
+  return {
+    spellId,
+    targetIds: [...new Set((Array.isArray(value.targetIds) ? value.targetIds : []).map(sanitizeEntityId).filter(Boolean))].slice(0, 100),
+  };
 }
 
 export class Character {
   constructor() {
+    this.schemaVersion = RULES_SCHEMA_VERSION;
+    this.kind = 'character';
     this.id = null;
-    this.hp = HitPoints.default();
+    this.classes = [];
+    this.speciesId = null;
+    this.backgroundId = null;
+    this.featIds = [];
+    this.equipment = [];
+    this.spellIds = [];
+    this.selections = [];
     this.abilityScores = {};
-    this.statusEffects = [];
-    this.customStatusEffects = [];
-    this.attacks = [];
-    this.features = [];
-    this.spells = [];
-    this.ruleSelections = sanitizeRuleSelections(null);
-    this.build = null;
-    this.spellSlots = defaultSpellSlots();
+    this.customFeatures = [];
+    this.state = {
+      hitPoints: { current: 10, maximum: 10, temporary: 0 },
+      resources: [], spellSlots: {}, conditions: [], customConditions: [],
+      concentration: null,
+      turn: { action: true, bonusAction: true, reaction: true },
+    };
     for (const key of ABILITY_KEYS) this.abilityScores[key] = 10;
     for (const field of CHARACTER_FIELDS) this[field.key] = field.default;
   }
@@ -388,476 +285,262 @@ export class Character {
   }
 
   static clone(existing) {
-    const c = Object.assign(new Character(), existing);
-    c.hp = HitPoints.clone(existing.hp);
-    c.abilityScores = { ...existing.abilityScores };
-    c.statusEffects = [...(existing.statusEffects || [])];
-    c.customStatusEffects = (existing.customStatusEffects || []).map((e) => ({ ...e }));
-    c.attacks = (existing.attacks || []).map((a) => ({ ...a }));
-    c.features = (existing.features || []).map((f) => ({ ...f }));
-    c.spells = (existing.spells || []).map((s) => ({ ...s }));
-    c.ruleSelections = sanitizeRuleSelections(existing.ruleSelections);
-    c.build = cloneBoundedJson(existing.build);
-    c.spellSlots = cloneSpellSlots(existing.spellSlots);
-    return c;
+    return Character.fromInput(existing ?? {}, null);
   }
 
   static fromInput(input, existing) {
+    input = input && typeof input === 'object' ? input : {};
     const c = existing ? Character.clone(existing) : new Character();
-
+    c.id = input.id ?? existing?.id ?? null;
     for (const field of CHARACTER_FIELDS) {
       if (input[field.key] === undefined) continue;
-      if (field.kind === 'int') {
-        c[field.key] = Validators.clampInt(input[field.key], field.min, field.max, c[field.key]);
-      } else {
-        const str = String(input[field.key]).trim().slice(0, field.maxLength);
-        c[field.key] = str || (field.emptyFallback !== undefined ? field.emptyFallback : str);
+      const value = String(input[field.key] ?? '').trim().slice(0, field.maxLength);
+      c[field.key] = value || field.emptyFallback || '';
+    }
+    if (input.abilityScores) for (const key of ABILITY_KEYS) {
+      if (input.abilityScores[key] !== undefined) c.abilityScores[key] = Validators.clampInt(input.abilityScores[key], 1, 30, c.abilityScores[key]);
+    }
+    const prior = existing ?? c;
+    c.classes = Array.isArray(input.classes) ? input.classes.map((entry) => ({
+      classId: sanitizeId(entry?.classId),
+      classLevel: Validators.clampInt(entry?.classLevel, 1, 20, 1),
+      subclassId: sanitizeId(entry?.subclassId),
+    })).filter((entry) => entry.classId).slice(0, 20) : prior.classes;
+    c.speciesId = input.speciesId === undefined ? prior.speciesId : sanitizeId(input.speciesId);
+    c.backgroundId = input.backgroundId === undefined ? prior.backgroundId : sanitizeId(input.backgroundId);
+    if (Array.isArray(input.featIds)) c.featIds = [...new Set(input.featIds.map(sanitizeId).filter(Boolean))].slice(0, 40);
+    if (Array.isArray(input.equipment)) c.equipment = input.equipment.map((entry) => ({
+      equipmentId: sanitizeId(entry?.equipmentId), quantity: Validators.clampInt(entry?.quantity, 1, 999, 1), equipped: entry?.equipped !== false,
+    })).filter((entry) => entry.equipmentId).slice(0, 100);
+    if (Array.isArray(input.spellIds)) c.spellIds = [...new Set(input.spellIds.map(sanitizeId).filter(Boolean))].slice(0, 100);
+    if (Array.isArray(input.selections)) c.selections = input.selections.map((selection) => ({
+      choiceId: sanitizeId(selection?.choiceId), selectedOptionIds: [...new Set((selection?.selectedOptionIds ?? []).map(sanitizeId).filter(Boolean))].slice(0, 40),
+    })).filter((selection) => selection.choiceId).slice(0, 200);
+    if (Array.isArray(input.customFeatures)) c.customFeatures = input.customFeatures.map((feature) => ({
+      id: sanitizeId(feature?.id), name: sanitizeStringField(feature?.name, 60),
+      description: sanitizeStringField(feature?.description, 2000), resolution: 'manual',
+    })).filter((feature) => feature.id && feature.name).slice(0, 30);
+
+    const stateInput = input.state && typeof input.state === 'object' ? input.state : {};
+    const oldState = prior.state ?? c.state;
+    const oldHp = oldState.hitPoints ?? c.state.hitPoints;
+    const hpInput = stateInput.hitPoints ?? {};
+    const spellSlots = { ...(oldState.spellSlots ?? {}) };
+    if (stateInput.spellSlots && typeof stateInput.spellSlots === 'object') {
+      for (const [level, slots] of Object.entries(stateInput.spellSlots)) {
+        if (/^[1-9]$/.test(level)) spellSlots[level] = { expended: Validators.clampInt(slots?.expended, 0, 99, spellSlots[level]?.expended ?? 0) };
       }
     }
-
-    if (input.hp) c.hp = HitPoints.fromInput(input.hp, c.hp);
-
-    if (input.abilityScores) {
-      for (const key of ABILITY_KEYS) {
-        if (input.abilityScores[key] !== undefined) {
-          c.abilityScores[key] = Validators.clampInt(input.abilityScores[key], 1, 30, c.abilityScores[key]);
-        }
-      }
-    }
-
-    if (input.customStatusEffects !== undefined) {
-      const list = Array.isArray(input.customStatusEffects) ? input.customStatusEffects : [];
-      c.customStatusEffects = list.map(sanitizeCustomStatusEffect).filter(Boolean).slice(0, 20);
-    }
-
-    if (input.statusEffects !== undefined) {
-      const list = Array.isArray(input.statusEffects) ? input.statusEffects : [];
-      const customKeys = new Set(c.customStatusEffects.map((e) => e.key));
-      const cap = Object.keys(STATUS_EFFECTS).length + customKeys.size;
-      c.statusEffects = list.filter((tag) => STATUS_EFFECTS[tag] || customKeys.has(tag)).slice(0, cap);
-    }
-
-    if (input.attacks !== undefined) {
-      const list = Array.isArray(input.attacks) ? input.attacks : [];
-      c.attacks = list.map(sanitizeAttack).filter(Boolean).slice(0, 30);
-    }
-
-    if (input.features !== undefined) {
-      const list = Array.isArray(input.features) ? input.features : [];
-      c.features = list.map(sanitizeFeature).filter(Boolean).slice(0, 30);
-    }
-
-    if (input.spells !== undefined) {
-      const list = Array.isArray(input.spells) ? input.spells : [];
-      c.spells = list.map(sanitizeSpell).filter(Boolean).slice(0, 40);
-    }
-
-    if (input.build !== undefined) c.build = cloneBoundedJson(input.build);
-
-    if (input.ruleSelections !== undefined) {
-      c.ruleSelections = sanitizeRuleSelections(input.ruleSelections, c.ruleSelections);
-      if (c.build && typeof c.build === 'object') {
-        c.build.speciesId = c.ruleSelections.speciesId;
-        c.build.backgroundId = c.ruleSelections.backgroundId;
-        c.build.classes = c.ruleSelections.classId
-          ? [{ classId: c.ruleSelections.classId, classLevel: c.level, subclassId: c.ruleSelections.subclassId }]
-          : [];
-        c.build.ruleset = { ...c.ruleSelections.ruleset };
-      }
-    }
-
-    if (input.spellSlotMax !== undefined) applySpellSlotMax(c.spellSlots, input.spellSlotMax);
-    if (input.spellSlots !== undefined) applySpellSlotCurrent(c.spellSlots, input.spellSlots);
+    const customConditions = Array.isArray(stateInput.customConditions)
+      ? stateInput.customConditions.map(sanitizeCustomStatusEffect).filter(Boolean).slice(0, 20) : oldState.customConditions;
+    const conditions = Array.isArray(stateInput.conditions) ? stateInput.conditions.map((condition) => ({
+      id: sanitizeId(condition?.id), sourceId: sanitizeEntityId(condition?.sourceId), duration: cloneBoundedJson(condition?.duration),
+    })).filter((condition) => condition.id).slice(0, 50) : oldState.conditions;
+    const validConditionIds = new Set([...Object.keys(STATUS_EFFECTS), ...(customConditions ?? []).map(({ key }) => key)]);
+    c.state = {
+      hitPoints: {
+        current: Validators.clampInt(hpInput.current, 0, 9999, oldHp.current),
+        maximum: Validators.clampInt(hpInput.maximum, 0, 9999, oldHp.maximum),
+        temporary: Validators.clampInt(hpInput.temporary, 0, 9999, oldHp.temporary),
+      },
+      resources: Array.isArray(stateInput.resources) ? stateInput.resources.map((resource) => ({
+        id: sanitizeId(resource?.id), remaining: Validators.clampInt(resource?.remaining, 0, 9999, 0),
+      })).filter((resource) => resource.id) : oldState.resources,
+      spellSlots,
+      conditions: conditions.filter((condition) => validConditionIds.has(condition.id)),
+      customConditions,
+      concentration: stateInput.concentration === undefined ? sanitizeConcentration(oldState.concentration) : sanitizeConcentration(stateInput.concentration),
+      turn: {
+        action: stateInput.turn?.action === undefined ? oldState.turn?.action !== false : stateInput.turn.action !== false,
+        bonusAction: stateInput.turn?.bonusAction === undefined ? oldState.turn?.bonusAction !== false : stateInput.turn.bonusAction !== false,
+        reaction: stateInput.turn?.reaction === undefined ? oldState.turn?.reaction !== false : stateInput.turn.reaction !== false,
+      },
+    };
 
     return c;
   }
 
   condition() {
-    return computeCondition(this.hp);
+    return computeCondition({ current: this.state.hitPoints.current, max: this.state.hitPoints.maximum });
   }
 
   toJSON() {
-    const out = {
-      id: this.id,
-      hp: this.hp.toJSON(),
-      abilityScores: { ...this.abilityScores },
-      statusEffects: [...this.statusEffects],
-      customStatusEffects: this.customStatusEffects.map((e) => ({ ...e })),
-      attacks: this.attacks.map((a) => ({ ...a })),
-      features: this.features.map((f) => ({ ...f })),
-      spells: this.spells.map((s) => ({ ...s })),
-      ruleSelections: sanitizeRuleSelections(this.ruleSelections),
-      ...(this.build ? { build: cloneBoundedJson(this.build) } : {}),
-      spellSlots: cloneSpellSlots(this.spellSlots),
+    return {
+      schemaVersion: RULES_SCHEMA_VERSION, kind: 'character', id: this.id, name: this.name,
+      notes: this.notes, tokenColor: this.tokenColor,
+      classes: this.classes.map((entry) => ({ ...entry })), speciesId: this.speciesId, backgroundId: this.backgroundId,
+      featIds: [...this.featIds], equipment: this.equipment.map((entry) => ({ ...entry })), spellIds: [...this.spellIds],
+      selections: this.selections.map((selection) => ({ choiceId: selection.choiceId, selectedOptionIds: [...selection.selectedOptionIds] })),
+      abilityScores: { ...this.abilityScores }, customFeatures: cloneBoundedJson(this.customFeatures), state: cloneBoundedJson(this.state),
     };
-    for (const field of CHARACTER_FIELDS) out[field.key] = this[field.key];
-    return out;
   }
 }
 
 export class MonsterInstance {
   constructor() {
-    // Identity / runtime state
     this.id = null;
     this.templateId = null;
-    this.hp = HitPoints.default();
-    this.statusEffects = [];
-    this.customStatusEffects = [];
-    this.spellSlots = defaultSpellSlots();
-
-    // Monster definition
-    this.name = 'Monster';
-    this.description = '';
-    this.size = '';
-    this.type = '';
-    this.alignment = '';
-    this.cr = null;
-    this.ac = null;
-    this.hpMax = 10;
-    this.hitDice = null;
-    this.speed = '';
-    this.xp = null;
-    this.proficiencyBonus = null;
-    this.passivePerception = null;
-    this.senses = null;
-    this.skills = null;
-    this.savingThrows = null;
-    this.languages = null;
-    this.conditionImmunities = null;
-    this.damageImmunities = null;
-    this.damageResistances = null;
-    this.damageVulnerabilities = null;
-    this.abilityScores = null;
-    this.abilityModifiers = null;
-    this.traits = [];
-    this.actions = [];
-    this.attacks = [];
-    this.bonusActions = [];
-    this.reactions = [];
-    this.legendaryActions = [];
-    this.spellcasting = null;
-    this.tokenImageUrl = null;
-    this.source = '';
+    this.state = {
+      hitPoints: { current: 10, maximum: 10, temporary: 0 },
+      resources: [], spellSlots: {}, conditions: [], customConditions: [],
+      concentration: null,
+      turn: { action: true, bonusAction: true, reaction: true },
+    };
   }
 
-  static default() {
-    return new MonsterInstance();
-  }
+  static default() { return new MonsterInstance(); }
 
-  static clone(existing) {
-    const m = Object.assign(new MonsterInstance(), existing);
-
-    m.hp = HitPoints.clone(existing.hp);
-    m.statusEffects = [...(existing.statusEffects || [])];
-    m.customStatusEffects = (existing.customStatusEffects || []).map((e) => ({ ...e }));
-    m.spellSlots = cloneSpellSlots(existing.spellSlots);
-
-    m.abilityScores = existing.abilityScores ? { ...existing.abilityScores } : null;
-
-    m.abilityModifiers = existing.abilityModifiers ? { ...existing.abilityModifiers } : null;
-
-    m.traits = (existing.traits || []).map((trait) => ({ ...trait }));
-    m.actions = (existing.actions || []).map((action) => ({ ...action }));
-    m.attacks = (existing.attacks || []).map((attack) => ({ ...attack }));
-    m.bonusActions = (existing.bonusActions || []).map((action) => ({ ...action }));
-    m.reactions = (existing.reactions || []).map((action) => ({ ...action }));
-    m.legendaryActions = (existing.legendaryActions || []).map((action) => ({ ...action }));
-
-    if (existing.spellcasting) {
-      m.spellcasting = {
-        ...existing.spellcasting,
-        innate: existing.spellcasting.innate ? { ...existing.spellcasting.innate } : null,
-        spellsByLevel: existing.spellcasting.spellsByLevel ? { ...existing.spellcasting.spellsByLevel } : null,
-        spellList: existing.spellcasting.spellList ? [...existing.spellcasting.spellList] : null,
-      };
-    }
-
+  static clone(existing = {}) {
+    existing = existing ?? {};
+    const m = new MonsterInstance();
+    m.id = existing.id ?? null;
+    m.templateId = sanitizeId(existing.templateId) ?? null;
+    const state = existing.state && typeof existing.state === 'object' ? existing.state : {};
+    const hp = state.hitPoints ?? {};
+    m.state = {
+      hitPoints: {
+        current: Validators.clampInt(hp.current, 0, 9999, 10),
+        maximum: Validators.clampInt(hp.maximum, 0, 9999, 10),
+        temporary: Validators.clampInt(hp.temporary, 0, 9999, 0),
+      },
+      resources: Array.isArray(state.resources) ? state.resources.map((resource) => ({
+        id: sanitizeId(resource?.id), remaining: Validators.clampInt(resource?.remaining, 0, 9999, 0),
+      })).filter((resource) => resource.id) : [],
+      spellSlots: state.spellSlots && typeof state.spellSlots === 'object' ? cloneBoundedJson(state.spellSlots) ?? {} : {},
+      conditions: Array.isArray(state.conditions) ? state.conditions.map((condition) => ({
+        id: sanitizeId(condition?.id), sourceId: sanitizeEntityId(condition?.sourceId), duration: cloneBoundedJson(condition?.duration),
+      })).filter((condition) => condition.id) : [],
+      customConditions: Array.isArray(state.customConditions) ? state.customConditions.map(sanitizeCustomStatusEffect).filter(Boolean).slice(0, 20) : [],
+      concentration: sanitizeConcentration(state.concentration),
+      turn: {
+        action: state.turn?.action !== false,
+        bonusAction: state.turn?.bonusAction !== false,
+        reaction: state.turn?.reaction !== false,
+      },
+    };
     return m;
   }
 
-  static fromTemplate(template) {
+  static fromTemplate(template, id = null) {
     const m = new MonsterInstance();
-
-    m.templateId = template.id;
-    m.name = template.name;
-    m.description = template.description;
-    m.size = template.size;
-    m.type = template.type;
-    m.alignment = template.alignment;
-    m.cr = template.cr;
-    m.ac = template.ac;
-    m.hpMax = template.hpMax;
-    m.hitDice = template.hitDice;
-    m.speed = template.speed;
-    m.xp = template.xp;
-    m.proficiencyBonus = template.proficiencyBonus;
-    m.passivePerception = template.passivePerception;
-    m.senses = template.senses;
-    m.skills = template.skills;
-    m.savingThrows = template.savingThrows;
-    m.languages = template.languages;
-    m.conditionImmunities = template.conditionImmunities;
-    m.damageImmunities = template.damageImmunities;
-    m.damageResistances = template.damageResistances;
-    m.damageVulnerabilities = template.damageVulnerabilities;
-
-    m.abilityScores = template.abilityScores ? { ...template.abilityScores } : null;
-
-    m.abilityModifiers = template.abilityModifiers ? { ...template.abilityModifiers } : null;
-
-    m.traits = (template.traits || []).map((trait) => ({ ...trait }));
-    m.actions = (template.actions || []).map((action) => ({ ...action }));
-    m.attacks = (template.attacks || []).map((attack) => ({ ...attack }));
-    m.bonusActions = (template.bonusActions || []).map((action) => ({ ...action }));
-    m.reactions = (template.reactions || []).map((action) => ({ ...action }));
-    m.legendaryActions = (template.legendaryActions || []).map((action) => ({ ...action }));
-
-    m.spellcasting = template.spellcasting
-      ? {
-          ...template.spellcasting,
-          innate: template.spellcasting.innate ? { ...template.spellcasting.innate } : null,
-          spellsByLevel: template.spellcasting.spellsByLevel ? { ...template.spellcasting.spellsByLevel } : null,
-          spellList: template.spellcasting.spellList ? [...template.spellcasting.spellList] : null,
-        }
-      : null;
-
-    m.tokenImageUrl = template.tokenImageUrl;
-    m.source = template.source;
-
-    const hpMax = Validators.clampInt(template.hpMax, 0, 9999, 10);
-
-    m.hpMax = hpMax;
-    m.hp = new HitPoints(hpMax, hpMax);
-
+    m.id = id;
+    m.templateId = sanitizeId(template?.id) ?? null;
+    const maximum = Validators.clampInt(template?.hitPoints?.average, 0, 9999, 10);
+    m.state.hitPoints = { current: maximum, maximum, temporary: 0 };
+    m.state.resources = Object.values(template?.abilities ?? {}).flatMap((entries) => Array.isArray(entries) ? entries : [])
+      .map(({ feature }) => ({
+        id: sanitizeId(feature?.id),
+        remaining: typeof feature?.uses?.maximum === 'number' ? feature.uses.maximum
+          : feature?.uses?.maximum?.formula === 'proficiency-bonus' ? template.proficiencyBonus : null,
+      }))
+      .filter((resource) => resource.id && Number.isFinite(resource.remaining));
     return m;
   }
 
   static fromInput(input, existing) {
     const m = MonsterInstance.clone(existing);
-
-    if (input.hp) {
-      m.hp = HitPoints.fromInput(input.hp, m.hp);
+    const state = input?.state && typeof input.state === 'object' ? input.state : input ?? {};
+    if (state.hitPoints) {
+      for (const key of ['current', 'maximum', 'temporary']) {
+        if (state.hitPoints[key] !== undefined) m.state.hitPoints[key] = Validators.clampInt(state.hitPoints[key], 0, 9999, m.state.hitPoints[key]);
+      }
     }
-
-    if (input.customStatusEffects !== undefined) {
-      const list = Array.isArray(input.customStatusEffects) ? input.customStatusEffects : [];
-      m.customStatusEffects = list.map(sanitizeCustomStatusEffect).filter(Boolean).slice(0, 20);
+    if (state.conditions !== undefined) {
+      m.state.conditions = (Array.isArray(state.conditions) ? state.conditions : []).map((condition) => ({
+        id: sanitizeId(condition?.id), sourceId: sanitizeEntityId(condition?.sourceId), duration: cloneBoundedJson(condition?.duration),
+      })).filter((condition) => condition.id);
     }
-
-    if (input.statusEffects !== undefined) {
-      const list = Array.isArray(input.statusEffects) ? input.statusEffects : [];
-      const customKeys = new Set(m.customStatusEffects.map((e) => e.key));
-      const cap = Object.keys(STATUS_EFFECTS).length + customKeys.size;
-      m.statusEffects = list.filter((tag) => STATUS_EFFECTS[tag] || customKeys.has(tag)).slice(0, cap);
+    if (state.customConditions !== undefined) {
+      m.state.customConditions = (Array.isArray(state.customConditions) ? state.customConditions : []).map(sanitizeCustomStatusEffect).filter(Boolean).slice(0, 20);
     }
-
-    if (input.spellSlotMax !== undefined) applySpellSlotMax(m.spellSlots, input.spellSlotMax);
-    if (input.spellSlots !== undefined) applySpellSlotCurrent(m.spellSlots, input.spellSlots);
-
+    if (state.resources !== undefined) {
+      const inputById = new Map((Array.isArray(state.resources) ? state.resources : []).map((resource) => [sanitizeId(resource?.id), resource]));
+      m.state.resources = m.state.resources.map((resource) => inputById.has(resource.id)
+        ? { ...resource, remaining: Validators.clampInt(inputById.get(resource.id).remaining, 0, 9999, resource.remaining) }
+        : resource);
+    }
+    if (state.spellSlots !== undefined) m.state.spellSlots = cloneBoundedJson(state.spellSlots) ?? {};
+    if (state.concentration !== undefined) m.state.concentration = sanitizeConcentration(state.concentration);
+    if (state.turn !== undefined) m.state.turn = {
+      action: state.turn?.action !== false, bonusAction: state.turn?.bonusAction !== false, reaction: state.turn?.reaction !== false,
+    };
     return m;
   }
 
   condition() {
-    return computeCondition(this.hp);
+    return computeCondition({ current: this.state.hitPoints.current, max: this.state.hitPoints.maximum });
   }
 
   toJSON() {
-    return {
-      id: this.id,
-      templateId: this.templateId,
-      spellSlots: cloneSpellSlots(this.spellSlots),
-
-      name: this.name,
-      description: this.description,
-      size: this.size,
-      type: this.type,
-      alignment: this.alignment,
-      cr: this.cr,
-      ac: this.ac,
-      hpMax: this.hpMax,
-      hitDice: this.hitDice,
-      speed: this.speed,
-      xp: this.xp,
-      proficiencyBonus: this.proficiencyBonus,
-      passivePerception: this.passivePerception,
-      senses: this.senses,
-      skills: this.skills,
-      savingThrows: this.savingThrows,
-      languages: this.languages,
-      conditionImmunities: this.conditionImmunities,
-      damageImmunities: this.damageImmunities,
-      damageResistances: this.damageResistances,
-      damageVulnerabilities: this.damageVulnerabilities,
-      abilityScores: this.abilityScores ? { ...this.abilityScores } : null,
-      abilityModifiers: this.abilityModifiers ? { ...this.abilityModifiers } : null,
-      traits: this.traits.map((trait) => ({ ...trait })),
-      actions: this.actions.map((action) => ({ ...action })),
-      attacks: this.attacks.map((attack) => ({ ...attack })),
-      bonusActions: this.bonusActions.map((action) => ({ ...action })),
-      reactions: this.reactions.map((action) => ({ ...action })),
-      legendaryActions: this.legendaryActions.map((action) => ({ ...action })),
-      spellcasting: this.spellcasting
-        ? {
-            ...this.spellcasting,
-            innate: this.spellcasting.innate ? { ...this.spellcasting.innate } : null,
-            spellsByLevel: this.spellcasting.spellsByLevel ? { ...this.spellcasting.spellsByLevel } : null,
-            spellList: this.spellcasting.spellList ? [...this.spellcasting.spellList] : null,
-          }
-        : null,
-      tokenImageUrl: this.tokenImageUrl,
-      source: this.source,
-
-      hp: this.hp.toJSON(),
-      statusEffects: [...this.statusEffects],
-      customStatusEffects: this.customStatusEffects.map((e) => ({ ...e })),
-    };
+    return { schemaVersion: RULES_SCHEMA_VERSION, kind: 'monster-instance', id: this.id, templateId: this.templateId, state: cloneBoundedJson(this.state) };
   }
 }
 
 export class Encounter {
-  constructor() {
-    this.id = null;
-    this.name = 'New Encounter';
-    this.snapshot = null;
-  }
-
-  static default() {
-    return new Encounter();
-  }
-
-  static clone(existing) {
-    const e = Object.assign(new Encounter(), existing);
-    e.snapshot = existing.snapshot;
-    return e;
-  }
-
+  constructor() { this.id = null; this.name = 'New Encounter'; this.snapshot = null; }
+  static default() { return new Encounter(); }
+  static clone(existing) { const e = Object.assign(new Encounter(), existing); e.snapshot = existing.snapshot; return e; }
   static fromInput(input, existing) {
     const e = existing ? Encounter.clone(existing) : new Encounter();
-    if (input.name !== undefined) {
-      const str = String(input.name).trim().slice(0, 60);
-      e.name = str || 'Unnamed Encounter';
-    }
-    if (input.snapshot !== undefined) {
-      e.snapshot = input.snapshot;
-    }
+    if (input.name !== undefined) { const str = String(input.name).trim().slice(0, 60); e.name = str || 'Unnamed Encounter'; }
+    if (input.snapshot !== undefined) e.snapshot = input.snapshot;
     return e;
   }
-
-  toJSON() {
-    return { id: this.id, name: this.name, snapshot: this.snapshot };
-  }
+  toJSON() { return { id: this.id, name: this.name, snapshot: this.snapshot }; }
 }
 
 export class Grid {
-  constructor() {
-    this.visible = true;
-    for (const field of GRID_FIELDS) this[field.key] = field.default;
-  }
-
-  static default() {
-    return new Grid();
-  }
-
+  constructor() { this.visible = true; for (const field of GRID_FIELDS) this[field.key] = field.default; }
+  static default() { return new Grid(); }
   static fromInput(input, existing) {
     const g = Object.assign(new Grid(), existing);
-    for (const field of GRID_FIELDS) {
-      if (input[field.key] !== undefined) {
-        g[field.key] = Validators.clampInt(input[field.key], field.min, field.max, g[field.key]);
-      }
-    }
+    for (const field of GRID_FIELDS) if (input[field.key] !== undefined) g[field.key] = Validators.clampInt(input[field.key], field.min, field.max, g[field.key]);
     if (input.visible !== undefined) g.visible = !!input.visible;
     return g;
   }
-
-  toJSON() {
-    const out = { visible: this.visible };
-    for (const field of GRID_FIELDS) out[field.key] = this[field.key];
-    return out;
-  }
+  toJSON() { const out = { visible: this.visible }; for (const field of GRID_FIELDS) out[field.key] = this[field.key]; return out; }
 }
 
 export class Token {
-  constructor() {
-    this.id = null;
-    for (const field of TOKEN_FIELDS) this[field.key] = field.default;
-  }
-
-  static default() {
-    return new Token();
-  }
-
-  static clone(existing) {
-    return Object.assign(new Token(), existing);
-  }
-
+  constructor() { this.id = null; for (const field of TOKEN_FIELDS) this[field.key] = field.default; }
+  static default() { return new Token(); }
+  static clone(existing) { return Object.assign(new Token(), existing); }
   static fromInput(input, grid, existing) {
     const t = existing ? Token.clone(existing) : new Token();
-
     for (const field of TOKEN_FIELDS) {
       if (input[field.key] === undefined) continue;
-      if (field.kind === 'int') {
-        t[field.key] = Validators.clampInt(input[field.key], field.min, field.max, t[field.key]);
-      } else if (field.kind === 'color') {
-        t[field.key] = input[field.key] || field.default;
-      } else {
-        t[field.key] = String(input[field.key]).trim().slice(0, field.maxLength) || field.default;
-      }
+      if (field.kind === 'int') t[field.key] = Validators.clampInt(input[field.key], field.min, field.max, t[field.key]);
+      else if (field.kind === 'color') t[field.key] = input[field.key] || field.default;
+      else t[field.key] = String(input[field.key]).trim().slice(0, field.maxLength) || field.default;
     }
-
     if (grid) {
       t.col = Validators.clampInt(t.col, 0, Math.max(0, grid.cols - 1), t.col);
       t.row = Validators.clampInt(t.row, 0, Math.max(0, grid.rows - 1), t.row);
     }
-
     return t;
   }
-
-  toJSON() {
-    const out = { id: this.id };
-    for (const field of TOKEN_FIELDS) out[field.key] = this[field.key];
-    return out;
-  }
+  toJSON() { const out = { id: this.id }; for (const field of TOKEN_FIELDS) out[field.key] = this[field.key]; return out; }
 }
 
 export class Overlay {
-  constructor() {
-    this.id = null;
-    this.type = 'generic';
-    this.shape = 'circle';
-    for (const field of OVERLAY_FIELDS) this[field.key] = field.default;
-  }
-
-  static default() {
-    return new Overlay();
-  }
-
+  constructor() { this.id = null; this.type = 'generic'; this.shape = 'circle'; for (const field of OVERLAY_FIELDS) this[field.key] = field.default; }
+  static default() { return new Overlay(); }
   static fromInput(input, grid) {
     const o = new Overlay();
     if (OVERLAY_TYPES[input.type]) o.type = input.type;
     if (OVERLAY_SHAPES.includes(input.shape)) o.shape = input.shape;
-
     for (const field of OVERLAY_FIELDS) {
       if (input[field.key] === undefined) continue;
-      if (field.kind === 'int') {
-        o[field.key] = Validators.clampInt(input[field.key], field.min, field.max, o[field.key]);
-      } else {
-        o[field.key] = String(input[field.key]).trim().slice(0, field.maxLength);
-      }
+      if (field.kind === 'int') o[field.key] = Validators.clampInt(input[field.key], field.min, field.max, o[field.key]);
+      else o[field.key] = String(input[field.key]).trim().slice(0, field.maxLength);
     }
-
     if (grid) {
       o.col = Validators.clampInt(o.col, 0, Math.max(0, grid.cols - 1), o.col);
       o.row = Validators.clampInt(o.row, 0, Math.max(0, grid.rows - 1), o.row);
     }
-
     return o;
   }
-
-  toJSON() {
-    const out = { id: this.id, type: this.type, shape: this.shape };
-    for (const field of OVERLAY_FIELDS) out[field.key] = this[field.key];
-    return out;
-  }
+  toJSON() { const out = { id: this.id, type: this.type, shape: this.shape }; for (const field of OVERLAY_FIELDS) out[field.key] = this[field.key]; return out; }
 }
 
 export class TurnOrder {
