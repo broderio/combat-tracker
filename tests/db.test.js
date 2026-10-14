@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { Database } from '../server/db.js';
+import { localRules } from '../server/localRules.js';
 
 function makeTempDb() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dnd-tracker-test-'));
@@ -59,6 +60,46 @@ test('sanitizeCharacter enforces local rules as the authority for linked selecti
   assert.deepEqual(character.equipment, [{ equipmentId: 'longsword', quantity: 1, equipped: true }]);
   assert.equal(Object.hasOwn(character, 'attacks'), false);
   assert.equal(Object.hasOwn(character, 'build'), false);
+});
+
+test('sanitizeCharacter preserves manual details only for an active local choice', () => {
+  const database = makeTempDb();
+  const classRecord = localRules.getClass('wizard');
+  const choice = classRecord.choices[0];
+  const character = database.sanitizeCharacter({
+    classes: [{ classId: 'wizard', classLevel: 1, subclassId: null }],
+    selections: [{
+      choiceId: choice.id,
+      selectedOptionIds: [],
+      manualValue: 'A manually resolved choice',
+      manualConfirmed: true,
+    }],
+  }, null);
+  assert.deepEqual(character.selections, [{
+    choiceId: choice.id,
+    selectedOptionIds: [],
+    manualValue: 'A manually resolved choice',
+    manualConfirmed: true,
+  }]);
+});
+
+test('sanitizeCharacter filters dynamic class spell choices to the local class and spell level', () => {
+  const database = makeTempDb();
+  const character = database.sanitizeCharacter({
+    classes: [{ classId: 'wizard', classLevel: 1, subclassId: null }],
+    spellIds: ['magic-missile', 'fireball'],
+    selections: [{
+      choiceId: 'wizard-spellbook-starting',
+      selectedOptionIds: ['magic-missile', 'fireball', 'not-a-local-spell'],
+    }],
+  }, null);
+  assert.deepEqual(character.spellIds, ['magic-missile', 'fireball']);
+  assert.deepEqual(character.selections, [{
+    choiceId: 'wizard-spellbook-starting',
+    selectedOptionIds: ['magic-missile'],
+    manualValue: '',
+    manualConfirmed: false,
+  }]);
 });
 
 test('findCharacter returns null for unknown username or character id', () => {

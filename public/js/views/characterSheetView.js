@@ -289,10 +289,18 @@ function buildCharacterCombatState(character, username, readOnly) {
 function buildCharacterCard(character, { showEditButton, showQuickEdit, username, readOnly } = {}) {
   let editButtonEl = null;
   if (showEditButton) {
-    editButtonEl = document.createElement('button');
-    editButtonEl.className = 'char-sheet-edit-btn';
-    editButtonEl.textContent = 'Edit Character Sheet';
-    editButtonEl.addEventListener('click', () => openCharacterModal(character, 'edit-in-game'));
+    editButtonEl = document.createElement('div');
+    editButtonEl.className = 'character-builder-actions';
+    const editButton = document.createElement('button');
+    editButton.className = 'char-sheet-edit-btn';
+    editButton.textContent = 'Edit Character';
+    editButton.addEventListener('click', () => openCharacterModal(character, 'edit-in-game'));
+    const levelUpButton = document.createElement('button');
+    levelUpButton.className = 'secondary-btn';
+    levelUpButton.textContent = 'Level Up';
+    levelUpButton.disabled = character.classes.reduce((total, selection) => total + selection.classLevel, 0) >= 20;
+    levelUpButton.addEventListener('click', () => openCharacterModal(character, 'level-up-in-game'));
+    editButtonEl.append(editButton, levelUpButton);
   }
 
   // Spell slots are self-service (a player spending their own slots mid-combat), so they're

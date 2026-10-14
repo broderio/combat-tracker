@@ -129,6 +129,63 @@
   word-break: break-word;
 }
 
+.character-spell-list {
+  display: grid;
+  gap: 4px;
+}
+
+.character-spell {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--wood-light);
+  overflow: hidden;
+}
+
+.character-spell summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  padding: 6px 8px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.character-spell summary::-webkit-details-marker { display: none; }
+.character-spell summary::before { content: '▸'; color: var(--ember-bright); flex: 0 0 auto; }
+.character-spell[open] summary::before { content: '▾'; }
+
+.character-spell-name {
+  min-width: 0;
+  color: var(--parchment);
+  font-size: 0.78rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.character-spell-classification {
+  flex: 0 0 auto;
+  color: var(--parchment-dim);
+  font-size: 0.68rem;
+}
+
+.character-spell-body {
+  padding: 6px 9px 8px;
+  border-top: 1px solid var(--line);
+  color: var(--parchment-dim);
+  font-size: 0.74rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.character-spell-metadata,
+.character-spell-source { font-size: 0.68rem; opacity: 0.9; }
+.character-spell-description { margin: 6px 0 0; white-space: pre-line; }
+.character-spell-source { margin-top: 6px; }
+
 .char-sheet-name {
   min-width: 0;
   max-width: 100%;

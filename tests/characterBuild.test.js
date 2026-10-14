@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { calculateCharacterDerivedValues, composeClassSelections, deriveWeaponAttack } from '../shared/characterBuild.js';
+import { calculateAverageMaximumHitPoints, calculateCharacterDerivedValues, composeClassSelections, deriveWeaponAttack } from '../shared/characterBuild.js';
+import {
+  collectChoiceBackedReferences,
+  collectSelectedChoiceEffects,
+  validateChoiceSelectionCount,
+} from '../shared/characterBuilder.js';
 
 test('changing the primary class preserves the former primary and other multiclass levels', () => {
   const classes = composeClassSelections(
@@ -44,6 +49,22 @@ test('additional class selections are de-duplicated and bounded to valid levels'
     [],
   );
   assert.deepEqual(classes, [{ classId: 'rogue', classLevel: 2, subclassId: null }]);
+});
+
+test('average maximum HP uses maximum hit die at level one and fixed averages afterward', () => {
+  const result = calculateAverageMaximumHitPoints([
+    { classId: 'fighter', classLevel: 3 },
+    { classId: 'rogue', classLevel: 2 },
+  ], { fighter: 10, rogue: 8 }, 14);
+  assert.equal(result.status, 'calculated');
+  assert.equal(result.maximum, 42);
+  assert.deepEqual(result.breakdown.map(({ subtotal }) => subtotal), [12, 16, 14]);
+});
+
+test('average maximum HP applies the minimum gain and rejects incomplete Hit Die data', () => {
+  const minimum = calculateAverageMaximumHitPoints([{ classId: 'wizard', classLevel: 2 }], { wizard: 6 }, 1);
+  assert.equal(minimum.maximum, 2);
+  assert.equal(calculateAverageMaximumHitPoints([{ classId: 'wizard', classLevel: 2 }], {}, 10).status, 'unknown');
 });
 
 test('weapon attacks derive ability, proficiency, and damage from canonical records without persistence', () => {
@@ -125,4 +146,66 @@ test('Pact Magic slots remain calculated independently and mixed pools are not g
     build: { classes: [{ classId: 'warlock', classLevel: 3 }, { classId: 'wizard', classLevel: 1 }] },
     classRecords,
   }).spellSlots.status, 'unsupported');
+});
+
+test('selected class-feature choices add only valid catalog references to character lists', () => {
+  const choiceEntries = [
+    {
+      choice: { id: 'wizard-cantrips', optionSource: { type: 'spell-list' } },
+      resolvedOptions: [{ id: 'fire-bolt' }, { id: 'light' }],
+    },
+    {
+      choice: { id: 'fighter-weapon', optionSource: { type: 'weapon-list' } },
+      resolvedOptions: [{ id: 'longsword' }],
+    },
+    {
+      choice: { id: 'fighter-feat', optionSource: { type: 'feat-list' } },
+      resolvedOptions: [{ id: 'alert' }],
+    },
+  ];
+  const references = collectChoiceBackedReferences(choiceEntries, [
+    { choiceId: 'wizard-cantrips', selectedOptionIds: ['light', 'fire-bolt', 'missing'] },
+    { choiceId: 'fighter-weapon', selectedOptionIds: ['longsword'] },
+    { choiceId: 'fighter-feat', selectedOptionIds: ['alert'] },
+  ]);
+  assert.deepEqual(references, {
+    spellIds: ['light', 'fire-bolt'],
+    featIds: ['alert'],
+    equipmentIds: ['longsword'],
+  });
+});
+
+test('choice count validation supports fixed and progression-resolved counts', () => {
+  const choice = { selection: { count: null, min: 1, max: 3, distinct: true } };
+  assert.deepEqual(validateChoiceSelectionCount(choice, ['arcana'], 2), {
+    valid: false,
+    errors: ['Choose at least 2 options.'],
+    min: 2,
+    max: 2,
+  });
+  assert.equal(validateChoiceSelectionCount(choice, ['arcana', 'history'], 2).valid, true);
+  assert.equal(validateChoiceSelectionCount(choice, ['arcana', 'arcana'], 2).valid, false);
+});
+
+test('only selected effects from structured choices are applied automatically', () => {
+  const entries = [
+    {
+      choice: { id: 'background-ability', resolution: 'structured' },
+      resolved: { state: 'options' },
+      resolvedOptions: [{ id: 'wisdom-plus-two', effects: [{ type: 'ability-score-increase', ability: 'wis', amount: 2, maximum: 20 }] }],
+    },
+    {
+      choice: { id: 'species-manual', resolution: 'manual' },
+      resolved: { state: 'manual' },
+      resolvedOptions: [{ id: 'manual-option', effects: [{ type: 'ability-score-increase', ability: 'int', amount: 1, maximum: 20 }] }],
+    },
+  ];
+  assert.deepEqual(collectSelectedChoiceEffects(entries, [
+    { choiceId: 'background-ability', selectedOptionIds: ['wisdom-plus-two'] },
+    { choiceId: 'species-manual', selectedOptionIds: ['manual-option'] },
+  ]), [{
+    choiceId: 'background-ability',
+    optionId: 'wisdom-plus-two',
+    effect: { type: 'ability-score-increase', ability: 'wis', amount: 2, maximum: 20 },
+  }]);
 });

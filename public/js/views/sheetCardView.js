@@ -367,17 +367,24 @@ export function buildSpellcastingContent(spellcasting) {
   return wrap.childElementCount ? wrap : null;
 }
 
-/** Render local spell records with their full descriptions and available casting metadata. */
+/** Render compact spell rows that reveal long descriptions only when expanded. */
 export function buildFlatSpellList(spells) {
   if (!spells?.length) return null;
   const wrap = document.createElement('div');
+  wrap.className = 'character-spell-list';
   spells.forEach((spell) => {
-    const row = document.createElement('div');
-    row.className = 'monster-spell-group';
-    const title = document.createElement('div');
-    title.className = 'monster-spell-group-label';
+    const row = document.createElement('details');
+    row.className = 'character-spell';
+    const summary = document.createElement('summary');
+    const title = document.createElement('span');
+    title.className = 'character-spell-name';
     title.textContent = spell.id || 'Unavailable local spell';
-    row.appendChild(title);
+    const classification = document.createElement('span');
+    classification.className = 'character-spell-classification';
+    const body = document.createElement('div');
+    body.className = 'character-spell-body';
+    summary.append(title, classification);
+    row.append(summary, body);
     wrap.appendChild(row);
     if (!spell.id) return;
     rulesRepository.getCatalogRecord('spells', spell.id).then((record) => {
@@ -386,30 +393,36 @@ export function buildFlatSpellList(spells) {
         return;
       }
       title.textContent = record.name;
-      const level = document.createElement('div');
-      level.className = 'monster-attack-details';
-      level.textContent = [
-        record.level === 0 ? 'Cantrip' : `Level ${record.level}`,
-        record.school,
-        record.feature.activation?.type && `Casting time: ${record.feature.activation.type}`,
-        record.feature.range && `Range: ${record.feature.range.kind}${record.feature.range.distance !== null ? ` ${record.feature.range.distance} ${record.feature.range.unit || ''}` : ''}`,
-        record.feature.duration && `Duration: ${record.feature.duration.value ?? ''} ${record.feature.duration.unit}${record.feature.concentration ? ' (Concentration)' : ''}`,
+      classification.textContent = [record.level === 0 ? 'Cantrip' : `Level ${record.level}`, record.school]
+        .filter(Boolean).join(' · ');
+
+      const feature = record.feature || {};
+      const metadata = document.createElement('div');
+      metadata.className = 'character-spell-metadata';
+      metadata.textContent = [
+        feature.activation?.type && `Casting time: ${feature.activation.type}`,
+        feature.range && `Range: ${feature.range.kind}${feature.range.distance !== null ? ` ${feature.range.distance} ${feature.range.unit || ''}` : ''}`,
+        feature.duration && `Duration: ${feature.duration.value ?? ''} ${feature.duration.unit || ''}${feature.concentration ? ' (Concentration)' : ''}`,
         record.ritual && 'Ritual',
-        record.classes?.length && `Classes: ${record.classes.map((classEntry) => classEntry.name).join(', ')}`,
         record.components?.length && `Components: ${record.components.join(', ')}`,
         record.material && `Material: ${record.material}`,
+        record.classes?.length && `Classes: ${record.classes.map((classEntry) => classEntry.name).join(', ')}`,
       ].filter(Boolean).join(' · ');
-      row.appendChild(level);
+      if (metadata.textContent) body.appendChild(metadata);
 
-      const renderedFeature = buildFeatureList([record.feature]);
-      if (renderedFeature) row.appendChild(renderedFeature);
+      if (feature.description) {
+        const description = document.createElement('p');
+        description.className = 'character-spell-description';
+        description.textContent = feature.description;
+        body.appendChild(description);
+      }
 
       const sources = (record.sources || []).map((source) => source.publication || source.title).filter(Boolean);
       if (sources.length) {
         const sourceEl = document.createElement('div');
-        sourceEl.className = 'monster-attack-details';
+        sourceEl.className = 'character-spell-source';
         sourceEl.textContent = `Source: ${[...new Set(sources)].join(', ')}`;
-        row.appendChild(sourceEl);
+        body.appendChild(sourceEl);
       }
     }).catch(() => {
       title.textContent = `${spell.id} (could not load local spell record)`;

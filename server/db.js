@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 import { Character, Encounter, RULES_SCHEMA_VERSION } from '../shared/schema.js';
+import { resolveChoiceOptions } from '../shared/characterBuilder.js';
 import { localRules } from './localRules.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -127,21 +128,58 @@ export class Database {
     c.equipment = c.equipment.filter(({ equipmentId }) => localRules.getRecordById('equipment', equipmentId));
 
     const choices = new Map();
-    const addChoices = (record) => (record?.choices || []).forEach((choice) => choices.set(choice.id, choice));
+    const classContexts = new Map();
+    const addChoices = (record, context = {}) => (record?.choices || []).forEach((choice) => choices.set(choice.id, {
+      choice,
+      ...context,
+    }));
     c.classes.forEach(({ classId, subclassId }) => {
       const classRecord = localRules.getClass(classId);
-      addChoices(classRecord);
-      if (subclassId) addChoices(localRules.getSubclass(classId, subclassId));
+      const classLevel = c.classes.find((entry) => entry.classId === classId)?.classLevel || 1;
+      classContexts.set(classId, classRecord);
+      addChoices(classRecord, { classId, classLevel, classRecord });
+      if (subclassId) addChoices(localRules.getSubclass(classId, subclassId), { classId, classLevel, classRecord });
     });
-    addChoices(c.speciesId && localRules.getRecordById('species', c.speciesId));
-    addChoices(c.backgroundId && localRules.getRecordById('backgrounds', c.backgroundId));
-    c.featIds.forEach((id) => addChoices(localRules.getRecordById('feats', id)));
+    const totalClassLevel = c.classes.reduce((total, selection) => total + selection.classLevel, 0);
+    const primaryClassId = c.classes[0]?.classId || null;
+    const primaryClassRecord = classContexts.get(primaryClassId) || null;
+    const characterContext = { classId: primaryClassId, classLevel: totalClassLevel || 1, classRecord: primaryClassRecord };
+    addChoices(c.speciesId && localRules.getRecordById('species', c.speciesId), characterContext);
+    addChoices(c.backgroundId && localRules.getRecordById('backgrounds', c.backgroundId), characterContext);
+    c.featIds.forEach((id) => addChoices(localRules.getRecordById('feats', id), characterContext));
+    const choiceCatalogs = {
+      feats: localRules.getCatalog('feats'),
+      equipment: localRules.getCatalog('equipment'),
+      spells: localRules.getCatalog('spells'),
+      skills: [], tools: [], languages: [],
+    };
     c.selections = c.selections.flatMap((selection) => {
-      const choice = choices.get(selection.choiceId);
-      if (!choice) return [];
+      const context = choices.get(selection.choiceId);
+      if (!context) return [];
+      const { choice } = context;
+      const usesCharacterLevel = ['character', 'character-level', 'total-character-level'].includes(choice.levelContext?.type);
+      const applicableLevel = usesCharacterLevel ? totalClassLevel : context.classLevel;
+      if (Number.isInteger(Number(choice.level)) && Number(choice.level) > applicableLevel) return [];
       const validOptionIds = new Set((choice.options || []).map(({ id }) => id));
-      const selectedOptionIds = selection.selectedOptionIds.filter((id) => !validOptionIds.size || validOptionIds.has(id));
-      return [{ choiceId: choice.id, selectedOptionIds }];
+      const resolved = resolveChoiceOptions(choice, {
+        catalogs: choiceCatalogs,
+        classId: context.classId,
+        classLevel: context.classLevel,
+        classRecord: context.classRecord,
+        spellcastingRecord: context.classRecord,
+        characterLevel: totalClassLevel,
+        buildSelections: c.selections,
+      });
+      const resolvedOptionIds = new Set(resolved.items.map(({ id }) => id).filter(Boolean));
+      const allowedOptionIds = new Set([...validOptionIds, ...resolvedOptionIds]);
+      const selectedOptionIds = selection.selectedOptionIds.filter((id) => allowedOptionIds.has(id));
+      return [{
+        ...selection,
+        choiceId: choice.id,
+        selectedOptionIds,
+        manualValue: String(selection.manualValue || '').slice(0, 2000),
+        manualConfirmed: selection.manualConfirmed === true,
+      }];
     });
     if (!existing) c.id = this.generateCharacterId();
     return c;

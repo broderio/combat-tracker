@@ -10,6 +10,51 @@ export function calculateProficiencyBonus(totalLevel) {
   return Number.isInteger(level) && level >= 1 && level <= LEVEL_CAP ? Math.floor((level - 1) / 4) + 2 : null;
 }
 
+/** Calculate a rules-based maximum HP estimate using max HP at level 1 and fixed averages afterward. */
+export function calculateAverageMaximumHitPoints(classes, hitDice, constitutionScore) {
+  const selections = Array.isArray(classes) ? classes : [];
+  const conScore = Number(constitutionScore);
+  if (!selections.length || !Number.isInteger(conScore) || conScore < 1 || conScore > 30) {
+    return { status: 'unknown', maximum: null, breakdown: [] };
+  }
+
+  const conModifier = calculateAbilityModifier(conScore);
+  const hitDieFor = (classId) => Number(hitDice instanceof Map ? hitDice.get(classId) : hitDice?.[classId]);
+  const breakdown = [];
+  let maximum = 0;
+  let totalLevel = 0;
+
+  for (const [index, selection] of selections.entries()) {
+    const classId = String(selection?.classId || '').trim();
+    const classLevel = Number(selection?.classLevel);
+    const hitDie = hitDieFor(classId);
+    if (!classId || !Number.isInteger(classLevel) || classLevel < 1 || classLevel > LEVEL_CAP
+      || ![6, 8, 10, 12].includes(hitDie)) {
+      return { status: 'unknown', maximum: null, breakdown: [] };
+    }
+    totalLevel += classLevel;
+    if (totalLevel > LEVEL_CAP) return { status: 'unknown', maximum: null, breakdown: [] };
+
+    if (index === 0) {
+      const firstLevelGain = Math.max(1, hitDie + conModifier);
+      maximum += firstLevelGain;
+      breakdown.push({ classId, hitDie, levels: 1, hpPerLevel: firstLevelGain, subtotal: firstLevelGain, firstLevel: true });
+      const laterLevels = classLevel - 1;
+      if (laterLevels > 0) {
+        const averageGain = Math.max(1, Math.floor(hitDie / 2) + 1 + conModifier);
+        maximum += laterLevels * averageGain;
+        breakdown.push({ classId, hitDie, levels: laterLevels, hpPerLevel: averageGain, subtotal: laterLevels * averageGain, firstLevel: false });
+      }
+    } else {
+      const averageGain = Math.max(1, Math.floor(hitDie / 2) + 1 + conModifier);
+      maximum += classLevel * averageGain;
+      breakdown.push({ classId, hitDie, levels: classLevel, hpPerLevel: averageGain, subtotal: classLevel * averageGain, firstLevel: false });
+    }
+  }
+
+  return { status: 'calculated', maximum, conModifier, breakdown };
+}
+
 function slotsAtLevel(table, level) {
   const row = table?.[String(level)];
   if (!row || typeof row !== 'object') return null;

@@ -315,6 +315,8 @@ export class Character {
     if (Array.isArray(input.spellIds)) c.spellIds = [...new Set(input.spellIds.map(sanitizeId).filter(Boolean))].slice(0, 100);
     if (Array.isArray(input.selections)) c.selections = input.selections.map((selection) => ({
       choiceId: sanitizeId(selection?.choiceId), selectedOptionIds: [...new Set((selection?.selectedOptionIds ?? []).map(sanitizeId).filter(Boolean))].slice(0, 40),
+      manualValue: sanitizeStringField(selection?.manualValue, 2000),
+      manualConfirmed: selection?.manualConfirmed === true,
     })).filter((selection) => selection.choiceId).slice(0, 200);
     if (Array.isArray(input.customFeatures)) c.customFeatures = input.customFeatures.map((feature) => ({
       id: sanitizeId(feature?.id), name: sanitizeStringField(feature?.name, 60),
@@ -370,7 +372,12 @@ export class Character {
       notes: this.notes, tokenColor: this.tokenColor,
       classes: this.classes.map((entry) => ({ ...entry })), speciesId: this.speciesId, backgroundId: this.backgroundId,
       featIds: [...this.featIds], equipment: this.equipment.map((entry) => ({ ...entry })), spellIds: [...this.spellIds],
-      selections: this.selections.map((selection) => ({ choiceId: selection.choiceId, selectedOptionIds: [...selection.selectedOptionIds] })),
+      selections: this.selections.map((selection) => ({
+        choiceId: selection.choiceId,
+        selectedOptionIds: [...selection.selectedOptionIds],
+        ...(selection.manualValue ? { manualValue: selection.manualValue } : {}),
+        ...(selection.manualConfirmed ? { manualConfirmed: true } : {}),
+      })),
       abilityScores: { ...this.abilityScores }, customFeatures: cloneBoundedJson(this.customFeatures), state: cloneBoundedJson(this.state),
     };
   }

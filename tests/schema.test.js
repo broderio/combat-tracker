@@ -147,6 +147,28 @@ test('Character round-trips through toJSON/fromInput without losing data', () =>
   assert.equal(Object.hasOwn(json, 'ruleSelections'), false);
 });
 
+test('Character persists bounded manual choice notes and confirmation state', () => {
+  const character = Character.fromInput({
+    selections: [{
+      choiceId: 'elf-1-elven-lineage-manual',
+      selectedOptionIds: [],
+      manualValue: 'Chosen lineage, pending source review',
+      manualConfirmed: true,
+    }],
+  }, null);
+  assert.deepEqual(character.toJSON().selections, [{
+    choiceId: 'elf-1-elven-lineage-manual',
+    selectedOptionIds: [],
+    manualValue: 'Chosen lineage, pending source review',
+    manualConfirmed: true,
+  }]);
+  const limited = Character.fromInput({
+    selections: [{ choiceId: 'elf-1-elven-lineage-manual', selectedOptionIds: [], manualValue: 'x'.repeat(3000) }],
+  }, null);
+  assert.equal(limited.selections[0].manualValue.length, 2000);
+  assert.equal(Object.hasOwn(limited.toJSON().selections[0], 'manualConfirmed'), false);
+});
+
 test('MonsterInstance.fromTemplate persists only a stable template reference and mutable state', () => {
   const template = { id: 'goblin', hitPoints: { average: 7 }, proficiencyBonus: 2, abilities: { actions: [
     { feature: { id: 'goblin-net', uses: { maximum: 1, period: 'day' } } },

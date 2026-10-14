@@ -26,6 +26,68 @@
   margin: 0 0 16px;
   color: var(--ember-bright);
 }
+.cf-builder-progress {
+  display: grid;
+  gap: 7px;
+  margin: 0 0 10px;
+  color: var(--parchment-dim);
+  font-size: 0.8rem;
+}
+.cf-builder-progress-track {
+  height: 5px;
+  overflow: hidden;
+  border-radius: 5px;
+  background: var(--wood);
+}
+.cf-builder-progress-track span {
+  display: block;
+  width: 25%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--ember-bright);
+  transition: width 160ms ease;
+}
+.cf-builder-navigation {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.cf-builder-navigation button { width: auto; padding: 8px 14px; }
+.cf-builder-step { min-width: 0; }
+.cf-level-up-controls {
+  margin: 14px 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--wood);
+}
+.cf-level-up-controls label {
+  display: grid;
+  gap: 5px;
+  color: var(--parchment-dim);
+  font-size: 0.8rem;
+}
+.cf-level-up-controls select {
+  padding: 7px;
+  color: var(--parchment);
+  background: var(--wood-light);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  font: inherit;
+}
+.cf-builder-review {
+  display: grid;
+  gap: 8px;
+}
+.cf-builder-review article {
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--wood);
+}
+.cf-builder-review h4 { margin: 0 0 4px; color: var(--parchment); }
+.cf-builder-review p { margin: 3px 0; color: var(--parchment-dim); font-size: 0.82rem; }
 .modal-card h3 {
   font-size: 0.85rem;
   text-transform: uppercase;
@@ -43,6 +105,16 @@
 }
 .char-form-grid label:first-child {
   grid-column: 1 / -1;
+}
+
+.cf-hp-calculator {
+  grid-column: 1 / -1;
+}
+
+.cf-hp-calculator .hint {
+  margin: 6px 0 0;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
 .char-form-grid label,
@@ -204,4 +276,20 @@
 .modal-actions button {
   width: auto;
   padding: 10px 18px;
+}
+.character-builder-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.character-builder-actions button { width: auto; }
+
+@media (max-width: 560px) {
+  .modal-overlay { padding: 8px; }
+  .modal-card { max-height: 94vh; padding: 16px; }
+  .char-form-grid { grid-template-columns: 1fr; }
+  .char-form-grid label:first-child { grid-column: auto; }
+  .ability-grid { grid-template-columns: repeat(3, 1fr); }
+  .cf-class-entry { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .modal-actions { flex-wrap: wrap; }
 }

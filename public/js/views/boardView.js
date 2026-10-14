@@ -215,7 +215,7 @@ export class BoardView {
 
       const canDrag =
         clientState.session.mode === 'dm' ||
-        (token.owner && token.owner.toLowerCase() === clientState.session.name.toLowerCase());
+        (token.owner && token.owner.toLowerCase() === clientState.session.name?.toLowerCase());
       el.classList.add(canDrag ? 'draggable' : 'locked');
       if (canDrag) this.#attachDrag(el, token.id);
 
@@ -310,7 +310,7 @@ export class BoardView {
       if (!el) return;
       const canDrag =
         clientState.session.mode === 'dm' ||
-        (token.owner && token.owner.toLowerCase() === clientState.session.name.toLowerCase());
+        (token.owner && token.owner.toLowerCase() === clientState.session.name?.toLowerCase());
       el.classList.toggle('draggable', canDrag);
       el.classList.toggle('locked', !canDrag);
     });
