@@ -381,9 +381,12 @@ export function buildFlatSpellList(spells) {
     title.textContent = spell.id || 'Unavailable local spell';
     const classification = document.createElement('span');
     classification.className = 'character-spell-classification';
+    const heading = document.createElement('span');
+    heading.className = 'character-spell-heading';
+    heading.append(title, classification);
     const body = document.createElement('div');
     body.className = 'character-spell-body';
-    summary.append(title, classification);
+    summary.append(heading);
     row.append(summary, body);
     wrap.appendChild(row);
     if (!spell.id) return;

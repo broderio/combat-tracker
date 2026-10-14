@@ -142,33 +142,49 @@
   overflow: hidden;
 }
 
-.character-spell summary {
+#character-sidebar .character-spell summary {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
+  align-items: flex-start;
+  gap: 6px;
+  width: 100%;
   min-width: 0;
   padding: 6px 8px;
   cursor: pointer;
   list-style: none;
 }
 
-.character-spell summary::-webkit-details-marker { display: none; }
-.character-spell summary::before { content: '▸'; color: var(--ember-bright); flex: 0 0 auto; }
-.character-spell[open] summary::before { content: '▾'; }
+#character-sidebar .character-spell summary::-webkit-details-marker { display: none; }
+#character-sidebar .character-spell summary::before {
+  content: '▸';
+  flex: 0 0 10px;
+  color: var(--ember-bright);
+}
+#character-sidebar .character-spell[open] summary::before { content: '▾'; }
+
+.character-spell-heading {
+  display: grid;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
 
 .character-spell-name {
+  display: block;
   min-width: 0;
   color: var(--parchment);
   font-size: 0.78rem;
   font-weight: 700;
+  line-height: 1.25;
+  white-space: normal;
   overflow-wrap: anywhere;
 }
 
 .character-spell-classification {
-  flex: 0 0 auto;
+  display: block;
+  min-width: 0;
   color: var(--parchment-dim);
   font-size: 0.68rem;
+  line-height: 1.2;
 }
 
 .character-spell-body {
