@@ -1,4 +1,4 @@
-# ⚔️ D&D Combat Tracker
+# ⚔️ Simple Virtual Table Top
 
 Run a live combat board for your table. The server hosts the app, and players join from a browser.
 
