@@ -66,6 +66,16 @@ export class ApiClient {
     return res.json();
   }
 
+  static async searchBackgrounds(name) {
+    const res = await fetch(`${API_BASE}${ROUTES.characterOptionsBackgrounds}?name=${encodeURIComponent(name || '')}`);
+    return res.json();
+  }
+
+  static async searchFeats(name) {
+    const res = await fetch(`${API_BASE}${ROUTES.characterOptionsFeats}?name=${encodeURIComponent(name || '')}`);
+    return res.json();
+  }
+
   static async getEncounters() {
     const res = await fetch(`${API_BASE}${ROUTES.encounters}`);
     return res.json();

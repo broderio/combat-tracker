@@ -100,6 +100,16 @@
     <div id="character-modal" class="modal-overlay hidden">
       <div class="modal-card">
         <h2 id="character-modal-title">New Character</h2>
+        <div class="cf-builder-progress" aria-live="polite">
+          <span id="cf-builder-step-status">Step 1 of 4</span>
+          <div class="cf-builder-progress-track"><span id="cf-builder-progress-fill"></span></div>
+        </div>
+        <div class="cf-builder-navigation" aria-label="Character builder steps">
+          <button id="cf-builder-back" type="button" class="secondary-btn" disabled>Back</button>
+          <button id="cf-builder-next" type="button" class="primary-btn">Continue</button>
+        </div>
+        <section class="cf-builder-step" data-builder-step="0" aria-label="Character basics">
+          <h3>1. Character Basics</h3>
         <div class="char-form-grid">
           <label
             >Name
@@ -107,21 +117,23 @@
           </label>
           <label
             >Class
-            <input id="cf-class" type="text" maxlength="40" list="cf-class-options" placeholder="e.g. Ranger" />
-            <datalist id="cf-class-options"></datalist>
+            <select id="cf-class"><option value="">Choose a class</option></select>
           </label>
           <label
-            >Race
-            <input id="cf-race" type="text" maxlength="40" list="cf-race-options" placeholder="e.g. Half-Elf" />
-            <datalist id="cf-race-options"></datalist>
+            >Species
+            <select id="cf-race"><option value="">Choose a species</option></select>
+          </label>
+          <label
+            >Background
+            <select id="cf-background"><option value="">Choose a background</option></select>
+          </label>
+          <label
+            >Subclass
+            <select id="cf-subclass" disabled><option value="">Choose a class first</option></select>
           </label>
           <label
             >Level
             <input id="cf-level" type="number" min="1" max="20" value="1" />
-          </label>
-          <label
-            >Armor Class
-            <input id="cf-ac" type="number" min="0" max="40" value="10" />
           </label>
           <label
             >HP (current)
@@ -131,7 +143,28 @@
             >HP (max)
             <input id="cf-hp-max" type="number" min="0" max="9999" value="10" />
           </label>
+          <div class="cf-hp-calculator">
+            <button id="cf-hp-calculate" type="button" class="secondary-btn">Use average HP</button>
+            <p id="cf-hp-rule-summary" class="hint" aria-live="polite">Rules estimate: maximum hit die at level 1; fixed average + CON modifier for each later level (minimum 1 HP per level). For rolled HP, enter your rolled total.</p>
+          </div>
         </div>
+        <h3>Additional Classes</h3>
+        <p class="hint">Class levels are allocated separately. The total level cannot exceed 20.</p>
+        <div id="cf-additional-classes" class="cf-entry-list"></div>
+        <button id="cf-add-class-btn" type="button" class="secondary-btn">+ Add Class</button>
+        <div id="cf-level-up-controls" class="cf-level-up-controls hidden">
+          <h3>Level Up</h3>
+          <p class="hint">Choose which class gains this character level. Existing choices and levels are retained.</p>
+          <label>Class to advance <select id="cf-level-up-class"></select></label>
+          <button id="cf-apply-level-up" type="button" class="secondary-btn">Apply +1 Level</button>
+          <p id="cf-level-up-status" class="hint" aria-live="polite"></p>
+        </div>
+        </section>
+        <section class="cf-builder-step hidden" data-builder-step="1" aria-label="Ability scores and rule choices">
+          <h3>2. Abilities &amp; Feature Choices</h3>
+        <h3>Rule Choices</h3>
+        <p class="hint">Choices with explicit local options can be selected here. Partial or manual choices show their source prompt; verify eligibility and unresolved rules.</p>
+        <div id="cf-rule-choices" class="cf-recommendations" aria-live="polite"></div>
 
         <h3>Ability Scores</h3>
         <div class="ability-grid">
@@ -142,10 +175,9 @@
           <label>WIS <input id="cf-wis" type="number" min="1" max="30" value="10" /></label>
           <label>CHA <input id="cf-cha" type="number" min="1" max="30" value="10" /></label>
         </div>
-
-        <h3>Max Spell Slots</h3>
-        <div id="cf-spell-slot-max-grid" class="ability-grid"></div>
-
+        </section>
+        <section class="cf-builder-step hidden" data-builder-step="2" aria-label="Equipment, spells, and features">
+          <h3>3. Spells, Equipment &amp; Features</h3>
         <label class="notes-label"
           >Notes
           <textarea
@@ -156,50 +188,63 @@
           ></textarea>
         </label>
 
-        <h3>Attacks</h3>
+        <h3>Equipment</h3>
+        <p class="hint">Choose local equipment. Weapon attacks and statistics are resolved from the rules record.</p>
         <div class="char-form-grid">
           <label
-            >Weapon lookup
-            <input id="cf-attack-search" type="text" list="cf-weapon-options" placeholder="Search dnd-data weapons…" />
+            >Equipment lookup
+            <input id="cf-attack-search" type="text" list="cf-weapon-options" placeholder="Search local equipment…" />
             <datalist id="cf-weapon-options"></datalist>
           </label>
-          <label>To Hit <input id="cf-attack-tohit" type="text" maxlength="20" placeholder="+5" /></label>
-          <label>Damage <input id="cf-attack-damage" type="text" maxlength="40" placeholder="1d8+3" /></label>
-          <label>Damage Type <input id="cf-attack-damagetype" type="text" maxlength="30" placeholder="slashing" /></label>
         </div>
-        <label class="notes-label"
-          >Attack Notes
-          <textarea id="cf-attack-desc" maxlength="500" rows="2" placeholder="Special properties, range, etc."></textarea>
-        </label>
-        <button id="cf-add-attack-btn" type="button" class="secondary-btn">+ Add Attack</button>
+        <button id="cf-add-attack-btn" type="button" class="secondary-btn">+ Add Equipment</button>
         <div id="cf-attacks-list" class="cf-entry-list"></div>
 
         <h3>Spells</h3>
         <div class="char-form-grid">
           <label
             >Spell lookup
-            <input id="cf-spell-search" type="text" list="cf-spell-options" placeholder="Search dnd-data spells…" />
+            <input id="cf-spell-search" type="text" list="cf-spell-options" placeholder="Search local spells…" />
             <datalist id="cf-spell-options"></datalist>
           </label>
         </div>
         <button id="cf-add-spell-btn" type="button" class="secondary-btn">+ Add Spell</button>
         <div id="cf-spells-list" class="cf-entry-list"></div>
 
-        <h3>Features</h3>
+        <h3>Feats — Local Rulebook Options</h3>
+        <p class="hint">Suggestions come from documented class/subclass feat choices and your selected level. Prerequisites still need to be checked; suggestions are never added automatically.</p>
+        <div id="cf-recommended-feats" class="cf-recommendations" aria-live="polite"></div>
+        <div class="char-form-grid">
+          <label
+            >Feat lookup
+            <input id="cf-feat-search" type="text" list="cf-feat-options" placeholder="Search local feats…" />
+            <datalist id="cf-feat-options"></datalist>
+          </label>
+        </div>
+        <button id="cf-add-feat-btn" type="button" class="secondary-btn">+ Add Feat from Lookup</button>
+        <div id="cf-feats-list" class="cf-entry-list"></div>
+
+        <h3>Custom Features</h3>
         <p class="hint">
-          Class features are prose in the source data and aren't searchable — add them by hand.
+          Manually recorded character abilities, traits, or notes. These are separate from database-backed Feats above.
         </p>
         <div class="char-form-grid">
-          <label>Feature Name <input id="cf-feature-name" type="text" maxlength="60" placeholder="e.g. Fighting Style" /></label>
+          <label>Custom Feature Name <input id="cf-feature-name" type="text" maxlength="60" placeholder="e.g. Second Wind" /></label>
         </div>
         <label class="notes-label"
-          >Feature Description
+          >Custom Feature Description
           <textarea id="cf-feature-desc" maxlength="1000" rows="2"></textarea>
         </label>
-        <button id="cf-add-feature-btn" type="button" class="secondary-btn">+ Add Feature</button>
+        <button id="cf-add-feature-btn" type="button" class="secondary-btn">+ Add Custom Feature</button>
         <div id="cf-features-list" class="cf-entry-list"></div>
 
         <label>Color <input id="cf-token-color" type="color" value="#e63946" /></label>
+        </section>
+        <section class="cf-builder-step hidden" data-builder-step="3" aria-label="Review character">
+          <h3>4. Review Your Character</h3>
+          <p class="hint">Check your choices before saving. Rule choices that need manual review are marked in the previous step.</p>
+          <div id="cf-builder-review" class="cf-builder-review"></div>
+        </section>
 
         <div class="modal-actions">
           <button id="cf-cancel-btn" class="secondary-btn">Cancel</button>
@@ -318,6 +363,10 @@
           </div>
 
           <div id="dm-tab-encounters" class="dm-tab-panel">
+            <h2>Current Encounter</h2>
+            <p class="hint">Reset the board and encounter data to the default settings.</p>
+            <button id="reset-encounter-btn" class="secondary-btn" type="button">Reset Current Encounter</button>
+
             <h2>Save Encounter</h2>
             <div class="token-controls">
               <label>Name <input id="encounter-name" type="text" placeholder="Goblin Ambush" maxlength="60" /></label>

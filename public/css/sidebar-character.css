@@ -1,13 +1,61 @@
+.local-rule-records {
+  display: grid;
+  gap: 10px;
+}
+
+.local-rule-record h4 {
+  margin: 4px 0 6px;
+  color: var(--parchment);
+}
+
+.local-rule-detail,
+.local-rule-description,
+.local-rule-effect {
+  margin: 5px 0;
+  color: var(--parchment-dim);
+  white-space: pre-wrap;
+  line-height: 1.45;
+}
+
+.local-rule-detail strong {
+  color: var(--parchment);
+}
+
+.local-rule-effect {
+  padding-left: 10px;
+  border-left: 2px solid var(--line);
+}
 /* ---------- Character sidebar (in-game) ---------- */
 /* TODO: Make the character sidebar vertically scrollable. */
 #character-sidebar {
-  width: auto;
-  flex-shrink: 0;
+  flex: 0 1 320px;
+  width: 320px;
+  min-width: 0;
+  max-width: min(360px, 35vw);
+  box-sizing: border-box;
   background: var(--wood-light);
   border-left: 1px solid var(--line);
   padding: 18px;
   overflow-y: auto;
+  overflow-x: hidden;
   min-height: 0;
+}
+
+#own-character-view,
+#all-characters-view,
+#public-roster-section,
+#public-roster-view,
+.char-sheet-card,
+.char-sheet-card details,
+.char-sheet-card .monster-details-body,
+.char-sheet-card .monster-spell-group,
+.char-sheet-card .monster-attack,
+.local-rule-records,
+.local-rule-record {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: normal;
 }
 
 #character-sidebar h2 {
@@ -56,6 +104,7 @@
 }
 
 .char-sheet-card {
+  box-sizing: border-box;
   width: 100%;
   min-width: 0;
   max-width: 100%;
@@ -66,6 +115,92 @@
   padding: 14px;
   margin-bottom: 14px;
 }
+
+.char-sheet-card .monster-details-body,
+.char-sheet-card .monster-spell-group,
+.char-sheet-card .monster-attack-details,
+.char-sheet-card .local-rule-description,
+.char-sheet-card .local-rule-effect {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.character-spell-list {
+  display: grid;
+  gap: 4px;
+}
+
+.character-spell {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--wood-light);
+  overflow: hidden;
+}
+
+#character-sidebar .character-spell summary {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  padding: 6px 8px;
+  cursor: pointer;
+  list-style: none;
+}
+
+#character-sidebar .character-spell summary::-webkit-details-marker { display: none; }
+#character-sidebar .character-spell summary::before {
+  content: '▸';
+  flex: 0 0 10px;
+  color: var(--ember-bright);
+}
+#character-sidebar .character-spell[open] summary::before { content: '▾'; }
+
+.character-spell-heading {
+  display: grid;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.character-spell-name {
+  display: block;
+  min-width: 0;
+  color: var(--parchment);
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.25;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.character-spell-classification {
+  display: block;
+  min-width: 0;
+  color: var(--parchment-dim);
+  font-size: 0.68rem;
+  line-height: 1.2;
+}
+
+.character-spell-body {
+  padding: 6px 9px 8px;
+  border-top: 1px solid var(--line);
+  color: var(--parchment-dim);
+  font-size: 0.74rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.character-spell-metadata,
+.character-spell-source { font-size: 0.68rem; opacity: 0.9; }
+.character-spell-description { margin: 6px 0 0; white-space: pre-line; }
+.character-spell-source { margin-top: 6px; }
 
 .char-sheet-name {
   min-width: 0;
@@ -84,6 +219,17 @@
   font-size: 0.8rem;
   color: var(--parchment-dim);
   margin: 2px 0 10px;
+}
+
+.local-rule-description,
+.local-rule-effect,
+.local-rule-detail,
+.local-weapon-details {
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: pre-wrap;
 }
 
 .char-sheet-stats {

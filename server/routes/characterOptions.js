@@ -3,10 +3,7 @@ import { Router } from 'express';
 import { ROUTES } from '../../shared/protocol.js';
 import { characterOptionsLibrary } from '../characterOptions.js';
 
-// Read-only lookups backing the character modal's searchable dropdowns —
-// class/race name autocomplete plus weapon/spell reference search. See
-// server/characterOptions.js for why these are name-only rather than fully
-// structured like server/monsterLibrary.js.
+// Read-only local catalog lookups backing the character builder.
 export class CharacterOptionsController {
   constructor() {
     this.router = Router();
@@ -14,6 +11,8 @@ export class CharacterOptionsController {
     this.router.get(ROUTES.characterOptionsRaces, (req, res) => this.races(req, res));
     this.router.get(ROUTES.characterOptionsWeapons, (req, res) => this.weapons(req, res));
     this.router.get(ROUTES.characterOptionsSpells, (req, res) => this.spells(req, res));
+    this.router.get(ROUTES.characterOptionsBackgrounds, (req, res) => this.backgrounds(req, res));
+    this.router.get(ROUTES.characterOptionsFeats, (req, res) => this.feats(req, res));
   }
 
   classes(req, res) {
@@ -30,5 +29,13 @@ export class CharacterOptionsController {
 
   spells(req, res) {
     res.json({ ok: true, spells: characterOptionsLibrary.searchSpells(req.query) });
+  }
+
+  backgrounds(req, res) {
+    res.json({ ok: true, backgrounds: characterOptionsLibrary.searchBackgrounds(req.query) });
+  }
+
+  feats(req, res) {
+    res.json({ ok: true, feats: characterOptionsLibrary.searchFeats(req.query) });
   }
 }

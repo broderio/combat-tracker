@@ -39,7 +39,7 @@ export class TokenHandlers extends BaseSocketHandler {
     const instance = this.gameState.addMonsterInstance(templateId);
     if (!instance) return; // unknown templateId
     this.gameState.addToken({
-      name: instance.name,
+      name: this.gameState.getMonsterTemplateName(instance.id) || 'Monster',
       color,
       owner: null,
       col,
@@ -51,16 +51,10 @@ export class TokenHandlers extends BaseSocketHandler {
     this.gameState.pushMonsterInstancesToDMs(this.io);
   }
 
-  // DM-only quick-edit of a placed monster instance's hp/statusEffects/spell slots.
-  #handleUpdateMonsterInstance({ id, hp, statusEffects, customStatusEffects, spellSlots, spellSlotMax }) {
+  // DM-only quick-edit of a placed monster instance's combat state.
+  #handleUpdateMonsterInstance({ id, state }) {
     if (!this.guard()) return;
-    const updated = this.gameState.updateMonsterInstance(id, {
-      hp,
-      statusEffects,
-      customStatusEffects,
-      spellSlots,
-      spellSlotMax,
-    });
+    const updated = this.gameState.updateMonsterInstance(id, { state });
     if (!updated) return;
     this.broadcastState();
     this.gameState.pushMonsterInstancesToDMs(this.io);

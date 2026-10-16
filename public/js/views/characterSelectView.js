@@ -32,9 +32,9 @@ export function renderCharacterSelectList() {
     nameEl.textContent = c.name;
     const metaEl = document.createElement('div');
     metaEl.className = 'char-card-meta';
-    metaEl.textContent = `Level ${c.level} ${c.race ? c.race + ' ' : ''}${
-      c.class || ''
-    } · HP ${c.hp.current}/${c.hp.max} · AC ${c.ac}`;
+    const level = c.classes.reduce((total, selection) => total + selection.classLevel, 0);
+    const build = [...c.classes.map(({ classId }) => classId), c.speciesId].filter(Boolean).join(' · ');
+    metaEl.textContent = `${level ? `Level ${level} · ` : ''}${build || 'Unbuilt'} · HP ${c.state.hitPoints.current}/${c.state.hitPoints.maximum}`;
     info.append(nameEl, metaEl);
 
     const actions = document.createElement('div');

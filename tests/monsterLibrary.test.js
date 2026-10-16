@@ -25,7 +25,7 @@ test('search respects an explicit limit', () => {
 test('search by crMin/crMax filters out monsters outside the CR range', () => {
   const results = monsterLibrary.search({ crMin: 5, crMax: 5, limit: 200 });
   for (const m of results) {
-    assert.equal(m.cr, 5);
+    assert.equal(m.challengeRating, 5);
   }
 });
 
@@ -34,5 +34,8 @@ test('getTemplate returns the full template for a known id and null for an unkno
   assert.ok(sample);
   const template = monsterLibrary.getTemplate(sample.id);
   assert.equal(template.id, sample.id);
+  assert.equal(template.kind, 'monster');
+  assert.ok(template.abilities);
+  assert.equal(Object.hasOwn(template, 'attacks'), false);
   assert.equal(monsterLibrary.getTemplate('not-a-real-id'), null);
 });

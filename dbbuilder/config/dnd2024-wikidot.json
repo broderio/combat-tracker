@@ -1,0 +1,55 @@
+{
+  "source": "dnd2024-wikidot",
+  "baseUrl": "https://dnd2024.wikidot.com",
+  "userAgent": "dbbuild/0.2 (personal 2024 rules database builder)",
+  "delayMs": 1500,
+  "edition": "2024",
+  "rawDir": "data/rules-raw",
+  "outDir": "data/rules",
+  "classes": {
+    "names": ["Artificer", "Barbarian", "Bard", "Cleric", "Druid", "Fighter", "Monk", "Paladin", "Ranger", "Rogue", "Sorcerer", "Warlock", "Wizard"],
+    "titleTemplate": "{name}:main",
+    "titles": {
+      "Artificer": "artificer:main",
+      "Barbarian": "barbarian:main",
+      "Bard": "bard:main",
+      "Cleric": "cleric:main",
+      "Druid": "druid:main",
+      "Fighter": "fighter:main",
+      "Monk": "monk:main",
+      "Paladin": "paladin:main",
+      "Ranger": "ranger:main",
+      "Rogue": "rogue:main",
+      "Sorcerer": "sorcerer:main",
+      "Warlock": "warlock:main",
+      "Wizard": "wizard:main"
+    }
+  },
+  "subclasses": {
+    "pages": {}
+  },
+  "multiclass": {
+    "page": "class:multiclassing"
+  },
+  "catalogs": {
+    "spells": { "index": "spell:all" },
+    "feats": { "index": "feat:all" },
+    "equipment": {
+      "index": "equipment:all",
+      "pages": [
+        "equipment:armor", "equipment:weapon", "equipment:adventuring-gear",
+        "equipment:mounts-and-vehicles", "equipment:trinket", "equipment:currency",
+        "equipment:poison", "equipment:tool"
+      ]
+    },
+    "backgrounds": { "index": "background:all" },
+    "species": { "index": "species:all" }
+  },
+  "monsters": {
+    "source": "aidedd-monsters",
+    "baseUrl": "https://www.aidedd.org",
+    "userAgent": "dbbuild/0.2 (personal 2024 rules database builder; polite catalog fetch)",
+    "delayMs": 1000
+  },
+  "overridesDir": "config/overrides"
+}

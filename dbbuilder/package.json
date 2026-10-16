@@ -1,0 +1,20 @@
+{
+  "name": "dbbuild",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "One-time builder for a local D&D 5.5e (2024) rules database as JSON files.",
+  "bin": { "dbbuild": "src/cli.js" },
+  "scripts": {
+    "test": "node --test \"test/*.test.js\"",
+    "fetch": "node src/cli.js fetch",
+    "fetch:catalogs": "node src/cli.js fetch catalogs",
+    "fetch:monsters": "node src/cli.js fetch catalogs monsters",
+    "build": "node src/cli.js build"
+  },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "ajv": "^8.17.1",
+    "cheerio": "^1.0.0"
+  }
+}

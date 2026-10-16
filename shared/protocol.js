@@ -11,6 +11,7 @@ export const EVENTS = {
   REMOVE_OVERLAY: 'remove-overlay',
   SET_TURN_ORDER: 'set-turn-order',
   NEXT_TURN: 'next-turn',
+  RESET_ENCOUNTER: 'reset-encounter',
   ROLL_DICE: 'roll-dice',
 
   // server -> client
@@ -45,6 +46,8 @@ export const ROUTES = {
   characterOptionsRaces: '/character-options/races',
   characterOptionsWeapons: '/character-options/weapons',
   characterOptionsSpells: '/character-options/spells',
+  characterOptionsBackgrounds: '/character-options/backgrounds',
+  characterOptionsFeats: '/character-options/feats',
   encounters: '/encounters',
   encounter: '/encounters/:id',
   encounterLoad: '/encounters/:id/load',
