@@ -1,6 +1,6 @@
-# DnD Combat Tracker
+# Combat Tracker
 
-A real-time DnD combat tracker you run from your own laptop and share with your players over the internet.
+A real-time combat tracker you run from your own laptop and share with your players over the internet.
 
 ## 1. Install
 
