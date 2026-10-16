@@ -1,0 +1,1 @@
+export const RULES_SCHEMA_VERSION = 6;

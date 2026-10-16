@@ -43,6 +43,7 @@ const addMonsterTokenBtn = document.getElementById('add-monster-token-btn');
 const encounterName = document.getElementById('encounter-name');
 const saveEncounterBtn = document.getElementById('save-encounter-btn');
 const encounterList = document.getElementById('encounter-list');
+const resetEncounterBtn = document.getElementById('reset-encounter-btn');
 
 /**
  * Keeps the grid input fields in sync with the latest server state, without
@@ -203,6 +204,12 @@ addMonsterTokenBtn.addEventListener('click', () => {
 // captures/restores it (see server/routes/encounters.js); this view is just
 // a name field, a save button, and the list of saves with Load/Overwrite/
 // Delete.
+resetEncounterBtn.addEventListener('click', () => {
+  const confirmed = confirm(
+    'Reset the current encounter to default settings? This clears the background, grid settings, tokens, overlays, turn order, and monster instances. Saved encounters and character records will not be changed.',
+  );
+  if (confirmed) socketClient.emitEvent(EVENTS.RESET_ENCOUNTER);
+});
 
 async function loadEncounterList() {
   const res = await ApiClient.getEncounters();

@@ -29,7 +29,7 @@ if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 // ---- Static files & JSON body parsing ----
 app.use(express.static(path.join(__dirname, 'public')));
-app.use('/rules', express.static(path.join(__dirname, '5e_rules', 'rules'), { fallthrough: false, index: false }));
+app.use('/rules', express.static(path.join(__dirname, 'dbbuilder', 'data', 'rules'), { fallthrough: false, index: false }));
 // Exposes shared/schema.js and shared/protocol.js at /shared/*.js so the
 // browser client can `import` the exact same files the server uses — see
 // the comment at the top of shared/schema.js for why this is safe/desired.

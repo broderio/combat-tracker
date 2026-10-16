@@ -1,6 +1,7 @@
 import { rosterStore } from '../rosterStore.js';
 
 import { GridHandler } from './gridHandler.js';
+import { EncounterHandler } from './encounterHandler.js';
 import { JoinHandler } from './joinHandler.js';
 import { OverlayHandlers } from './overlayHandlers.js';
 import { TokenHandlers } from './tokenHandlers.js';
@@ -13,6 +14,7 @@ export function registerSocketHandlers(io, database, gameState) {
 
     new JoinHandler(io, socket, session, database, gameState, rosterStore).register();
     new GridHandler(io, socket, session, gameState).register();
+    new EncounterHandler(io, socket, session, gameState).register();
     new TokenHandlers(io, socket, session, gameState).register();
     new OverlayHandlers(io, socket, session, gameState).register();
     new TurnHandlers(io, socket, session, gameState).register();

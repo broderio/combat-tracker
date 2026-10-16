@@ -57,6 +57,12 @@ export class GameStateStore {
     this.#loadFromSnapshot(snapshot);    this.#persist();
   }
 
+  /** Restores the board and encounter data to their initial defaults. */
+  resetToDefaults() {
+    this.#loadFromSnapshot(null);
+    this.#persist();
+  }
+
   getState() {
     return {
       background: this.background,

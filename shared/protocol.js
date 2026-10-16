@@ -11,6 +11,7 @@ export const EVENTS = {
   REMOVE_OVERLAY: 'remove-overlay',
   SET_TURN_ORDER: 'set-turn-order',
   NEXT_TURN: 'next-turn',
+  RESET_ENCOUNTER: 'reset-encounter',
   ROLL_DICE: 'roll-dice',
 
   // server -> client

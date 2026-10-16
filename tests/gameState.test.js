@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { GameStateStore } from '../server/gameState.js';
+import { monsterLibrary } from '../server/monsterLibrary.js';
 
 function makeFakeDb(initialSnapshot = null) {
   let snapshot = initialSnapshot;
@@ -104,6 +105,33 @@ test('toSnapshotJSON + restoreSnapshot round-trips the full board state', () => 
   const restoredState = otherStore.getState();
   assert.equal(restoredState.grid.cols, 12);
   assert.equal(Object.values(restoredState.tokens).length, 1);
+});
+
+test('resetToDefaults clears encounter data and persists the default board settings', () => {
+  let persistedSnapshot = null;
+  const database = makeFakeDb();
+  database.saveBoardState = (snapshot) => {
+    persistedSnapshot = snapshot;
+  };
+  const store = new GameStateStore(database);
+  store.setBackground('/uploads/map.png');
+  store.setGrid({ cols: 8, rows: 9, visible: false });
+  store.addToken({ name: 'Goblin' });
+  store.addOverlay({ type: 'fire' });
+  store.setTurnOrder([{ tokenId: 'tok_1', initiative: 12 }]);
+  const [monsterTemplate] = monsterLibrary.search({ limit: 1 });
+  assert.ok(store.addMonsterInstance(monsterTemplate.id));
+
+  store.resetToDefaults();
+
+  const state = store.getState();
+  assert.equal(state.background, null);
+  assert.deepEqual(state.grid, { visible: true, cols: 20, rows: 15, cellSize: 40 });
+  assert.deepEqual(state.tokens, {});
+  assert.deepEqual(state.overlays, {});
+  assert.deepEqual(state.turnOrder, { combatants: [], currentIndex: -1, round: 0 });
+  assert.deepEqual(store.getMonsterInstancesJSON(), {});
+  assert.deepEqual(persistedSnapshot, store.toSnapshotJSON());
 });
 
 test('combatantStatuses in getState reflects a linked character\'s condition via the db lookup', () => {

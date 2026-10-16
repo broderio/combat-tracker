@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-export const RULES_ROOT = path.resolve(__dirname, '..', '5e_rules', 'rules');
+export const RULES_ROOT = path.resolve(__dirname, '..', 'dbbuilder', 'data', 'rules');
 
 export class LocalRules {
   constructor(root = RULES_ROOT) {

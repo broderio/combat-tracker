@@ -14,12 +14,12 @@ import {
   buildSheetCard,
 } from './sheetCardView.js';
 import { rulesRepository } from '../rulesRepository.js';
+import { monsterBadgeLabel as getMonsterBadgeLabel } from '../monsterNumbering.js';
 
 const monstersView = document.getElementById('monsters-view');
 
 export function monsterBadgeLabel(combatantId) {
-  const match = /(\d+)$/.exec(combatantId || ''); // e.g. "moninst_42" → "42"
-  return match ? `#${match[1]}` : '';
+  return getMonsterBadgeLabel(combatantId, clientState.board.tokens);
 }
 
 // Traits, non-attack Actions (e.g. Multiattack), Bonus Actions, Reactions,
