@@ -1,55 +1,41 @@
-# Combat Tracker
+# ⚔️ D&D Combat Tracker
 
-A real-time combat tracker you run from your own laptop and share with your players over the internet.
+Run a live combat board for your table. The server hosts the app, and players join from a browser.
 
-## 1. Install
+## Quick start
 
-You need [Node.js](https://nodejs.org) (v18+) installed on the laptop that will host the game.
+**You’ll need [Node.js 20 or newer](https://nodejs.org/).** The rules data is generated locally and is not included in a fresh checkout.
+
+From the repository root, prepare the rules database once:
 
 ```bash
-cd dnd5e-combat-tracker
+cd dbbuilder
 npm install
+npm run fetch
+npm run fetch:catalogs
+npm run build
+cd ..
 ```
 
-## 2. Run
+Then install and start the tracker:
 
 ```bash
+npm install
 npm start
 ```
 
-You'll see:
+Open **http://localhost:3000**. Sign in as the DM with the initial credentials `dm` / `0000`; change the PIN in `data/db.json` before hosting a real game. Players can create their own account by entering a username and PIN.
 
-```
-DnD Combat Tracker running:
-  Local:   http://localhost:3000
-  Network: http://<your-lan-ip>:3000
-```
+## Invite players
 
-Open `http://localhost:3000` yourself to confirm it works before inviting anyone.
-
-## 3. Getting Your Players Connected
-
-Your laptop isn't normally reachable from the internet, so you must use a tunneling tool to let players connect to your server that are not on your local network.
-
-### ngrok
-
-Using [ngrok](https://ngrok.com) makes this step easy. Sign up for a free account, install the ngrok CLI, and run:
+Players on your local network can use the network address printed by the server. To invite players over the internet, expose port `3000` with a tunneling service such as [ngrok](https://ngrok.com), then share its HTTPS forwarding URL:
 
 ```bash
-ngrok config add-authtoken <your-token>
 ngrok http 3000
 ```
 
-You should see an output similar to:
+Keep the tracker server and tunnel running while you play.
 
-```
-Session Status                online
-Account                       <your-account> (Plan: Free)
-Version                       3.39.11
-Region                        <your-region>
-Latency                       34ms
-Web Interface                 http://127.0.0.1:4040
-Forwarding                    https://<unique-subdomain>.ngrok-free.dev -> http://localhost:3000
-```
+## Rules database
 
-Send the `https://<unique-subdomain>.ngrok-free.dev` URL to your players. They can open it in their browser and join your game.
+The tracker reads generated rules from `dbbuilder/data/rules/`. To refresh that data later, rerun the `dbbuilder` commands above. See [dbbuilder/README.md](dbbuilder/README.md) for details.
